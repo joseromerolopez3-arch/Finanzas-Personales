@@ -51,7 +51,7 @@ export function convertLegacy(data: LegacyData): Snapshot {
     .map((t) => {
       const base = {
         id: t.id, date: t.date, amount: round2(t.amount), note: t.note ?? '', source: 'manual' as const,
-        externalId: null, toExternalId: null, bankDescription: null, recurringId: null, createdAt: now
+        externalId: null, toExternalId: null, bankDescription: null, recurringId: null, createdBy: null, createdAt: now
       };
       if (t.type === 'transfer') {
         return { ...base, type: 'transfer' as const, accountId: t.fromAccountId || firstAccount, toAccountId: t.toAccountId ?? null, categoryId: null };

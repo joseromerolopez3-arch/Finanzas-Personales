@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Search, Upload } from 'lucide-react';
 import type { Transaction } from '../domain/types';
 import { useApp } from '../state/app';
-import { useLookups } from '../state/hooks';
+import { useLookups, useMemberName } from '../state/hooks';
 import { useUI } from '../state/ui';
 import { inMonth, totals } from '../domain/calc';
 import { isReconciled } from '../domain/reconcile';
@@ -113,6 +113,7 @@ export function TxRow({ t, onClick, reconciledAccounts, lookups }: {
   t: Transaction; onClick: () => void; reconciledAccounts?: Set<string>; lookups: ReturnType<typeof useLookups>;
 }) {
   const { cat, acc } = lookups;
+  const who = useMemberName()(t.createdBy);
   const c = cat(t.categoryId);
   const a = acc(t.accountId);
   let icon = c.icon, color = c.color, title = t.note || c.name, sub = `${c.name} · ${a.name}`, amount = '', cls = '';
@@ -132,7 +133,7 @@ export function TxRow({ t, onClick, reconciledAccounts, lookups }: {
       <Ico icon={icon} color={color} />
       <div className="main-col">
         <div className="t1">{title}</div>
-        <div className="t2">{reconciled && <ReconciledMark />} {sub}</div>
+        <div className="t2">{reconciled && <ReconciledMark />} {sub}{who && ` · ${who}`}</div>
       </div>
       <div className={`amt ${cls}`}>{amount}</div>
     </button>

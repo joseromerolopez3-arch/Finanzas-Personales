@@ -7,7 +7,7 @@ export const TABLES: Record<CollectionName, { table: string; fields: string[] }>
   transactions: {
     table: 'transactions',
     fields: ['id', 'type', 'date', 'amount', 'accountId', 'toAccountId', 'categoryId', 'note', 'source', 'externalId',
-      'toExternalId', 'bankDescription', 'recurringId', 'createdAt']
+      'toExternalId', 'bankDescription', 'recurringId', 'createdBy', 'createdAt']
   },
   budgetYears: { table: 'budget_years', fields: ['id', 'year', 'mode'] },
   budgetLines: { table: 'budget_lines', fields: ['id', 'year', 'kind', 'categoryId', 'pattern', 'base', 'amounts'] },
@@ -17,7 +17,7 @@ export const TABLES: Record<CollectionName, { table: string; fields: string[] }>
   },
   recurringLog: { table: 'recurring_log', fields: ['id', 'recurringId', 'period', 'status', 'transactionId', 'at'] },
   rules: { table: 'rules', fields: ['id', 'pattern', 'categoryId', 'kind'] },
-  settings: { table: 'settings', fields: ['id', 'name', 'startMonth', 'theme', 'onboarded', 'legacyImported', 'lastAccountId'] }
+  settings: { table: 'settings', fields: ['id', 'householdId', 'name', 'startMonth', 'theme', 'onboarded', 'legacyImported', 'lastAccountId'] }
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionName[];

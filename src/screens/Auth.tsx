@@ -43,13 +43,13 @@ export function AuthScreen() {
   const submit = () => run(async () => {
     const e = email.trim();
     if (mode === 'reset') {
-      const { error } = await supabase!.auth.resetPasswordForEmail(e, { redirectTo: location.origin });
+      const { error } = await supabase!.auth.resetPasswordForEmail(e, { redirectTo: location.origin + location.search });
       if (error) throw error;
       setNotice('Te hemos enviado un enlace para crear una contraseña nueva.');
       return;
     }
     if (mode === 'signup') {
-      const { data, error } = await supabase!.auth.signUp({ email: e, password, options: { emailRedirectTo: location.origin } });
+      const { data, error } = await supabase!.auth.signUp({ email: e, password, options: { emailRedirectTo: location.origin + location.search } });
       if (error) throw error;
       if (!data.session) setNotice('Revisa tu email y confirma la cuenta para entrar.');
       return;

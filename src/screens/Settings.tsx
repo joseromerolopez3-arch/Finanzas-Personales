@@ -17,7 +17,7 @@ import { KindToggle } from './parts';
 import { downloadBackup, downloadCSV, readBackup } from './backup';
 
 export function SettingsScreen() {
-  const { settings, saveSettings, accounts, data, storeKind, email, signOut, replaceAll, toast } = useApp();
+  const { settings, saveSettings, accounts, data, storeKind, email, signOut, replaceAll, toast, household, cloud, refreshHousehold } = useApp();
   const ui = useUI();
   const lookups = useLookups();
   const [name, setName] = useState(settings.name);
@@ -46,7 +46,11 @@ export function SettingsScreen() {
 
       <div className="card">
         <Field label="Tu nombre">
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() !== settings.name && saveSettings({ name: name.trim() })} />
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => {
+            if (name.trim() === settings.name) return;
+            saveSettings({ name: name.trim() });
+            void cloud?.setMyName(name.trim()).then(refreshHousehold);
+          }} />
         </Field>
         <div className="field"><span className="label">Apariencia</span>
           <Segmented value={settings.theme} onChange={(theme) => saveSettings({ theme })}
@@ -54,6 +58,22 @@ export function SettingsScreen() {
         </div>
         <p className="hint">{storeKind === 'cloud' ? `Sesión: ${email} · tus datos se guardan en la nube.` : 'Modo sin cuenta: los datos solo están en este dispositivo. Haz copias de seguridad.'}</p>
       </div>
+
+      {storeKind === 'cloud' && household && (
+        <>
+          <div className="section-head"><h2>Hogar compartido</h2></div>
+          <div className="card flush">
+            <button className="list-row" onClick={ui.openHousehold}>
+              <Ico icon="🏡" color="#3F8C74" />
+              <div className="main-col">
+                <div className="t1">{household.name}</div>
+                <div className="t2">{household.members.length > 1 ? household.members.map((m) => m.name || m.email).join(', ') : 'Solo tú · invita a quien quieras'}</div>
+              </div>
+              <ChevronRight size={16} className="faint" />
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="section-head"><h2>Cuentas</h2><button className="link" onClick={() => setAccEdit('new')}><Plus size={14} style={{ verticalAlign: -2 }} /> Añadir</button></div>
       <div className="card flush">

@@ -17,6 +17,7 @@ export interface UI {
   openRecurring: () => void;
   openImport: (accountId?: string) => void;
   openAccount: (id: string) => void;
+  openHousehold: () => void;
   period: { y: number; m0: number };
   setPeriod: (y: number, m0: number) => void;
 }

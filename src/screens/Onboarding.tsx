@@ -7,9 +7,14 @@ import { buildAmounts, lineId } from '../domain/budget';
 import { todayStr } from '../lib/dates';
 import { uid } from '../lib/id';
 import { Field, MoneyInput } from '../ui/controls';
+import { JoinBox, peekInvite } from './Household';
 
 export function Onboarding() {
-  const { data, upsert, settings, email } = useApp();
+  const { data, upsert, settings, email, cloud, restart } = useApp();
+  const [inviteCode] = useState(peekInvite);
+  const [showJoin, setShowJoin] = useState(!!inviteCode);
+  // Joined an existing household: its accounts and budget are already there.
+  const joined = data.accounts.length > 0 || data.transactions.length > 0;
   const [step, setStep] = useState(0);
   const [name, setName] = useState(settings.name);
   const [date, setDate] = useState(todayStr());
@@ -20,6 +25,11 @@ export function Onboarding() {
   const setAcc = (id: string, patch: Partial<Account>) => setAccounts((l) => l.map((a) => (a.id === id ? { ...a, ...patch } : a)));
 
   const finish = () => {
+    void cloud?.setMyName(name.trim());
+    if (joined) {
+      upsert('settings', [{ ...settings, id: 'me', name: name.trim(), onboarded: true }]);
+      return;
+    }
     const year = Number(date.slice(0, 4));
     if (!data.categories.length) upsert('categories', defaultCategories());
     upsert('accounts', accounts.filter((a) => a.name.trim()).map((a, i) => ({ ...a, name: a.name.trim(), position: i, openingDate: date })));
@@ -40,6 +50,19 @@ export function Onboarding() {
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" autoFocus />
       </Field>
       {email && <p className="hint">Cuenta: {email}</p>}
+      {joined && <div className="notice">Ya formas parte de un hogar con sus cuentas y su presupuesto. Solo falta tu nombre.</div>}
+      {cloud && !joined && (
+        <div style={{ marginTop: 18 }}>
+          {showJoin ? (
+            <>
+              <div className="label small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Código de invitación</div>
+              <JoinBox compact initialCode={inviteCode} displayName={name.trim()} onJoined={restart} />
+            </>
+          ) : (
+            <button className="link" onClick={() => setShowJoin(true)}>¿Te han invitado a un hogar compartido? Introduce el código</button>
+          )}
+        </div>
+      )}
     </div>,
     <div key="1">
       <h2 className="display" style={{ fontSize: 24 }}>Tus cuentas</h2>
@@ -85,6 +108,7 @@ export function Onboarding() {
   ];
 
   const canNext = step !== 0 || name.trim().length > 0;
+  if (joined) steps.splice(1);
   return (
     <div className="auth">
       <div className="auth-box" style={{ maxWidth: 460 }}>

@@ -18,6 +18,15 @@ export function useLookups() {
   }, [accounts, categories]);
 }
 
+/** Name of whoever entered a movement, only when the household has several people. */
+export function useMemberName() {
+  const { household, userId } = useApp();
+  return useMemo(() => {
+    const names = new Map((household?.members ?? []).map((m) => [m.userId, m.name || (m.email ?? '').split('@')[0]]));
+    return (id: string | null) => (household && household.members.length > 1 && id && id !== userId ? names.get(id) ?? null : null);
+  }, [household, userId]);
+}
+
 export function useCategorizer() {
   const { data } = useApp();
   return useMemo(() => makeCategorizer(data.rules, data.transactions), [data.rules, data.transactions]);
@@ -39,6 +48,6 @@ export function useSortedCategories(kind: 'income' | 'expense') {
 export function newTx(p: Partial<Transaction> & Pick<Transaction, 'type' | 'amount' | 'accountId'>): Transaction {
   return {
     id: uid(), date: todayStr(), toAccountId: null, categoryId: null, note: '', source: 'manual', externalId: null,
-    toExternalId: null, bankDescription: null, recurringId: null, createdAt: new Date().toISOString(), ...p
+    toExternalId: null, bankDescription: null, recurringId: null, createdBy: null, createdAt: new Date().toISOString(), ...p
   };
 }

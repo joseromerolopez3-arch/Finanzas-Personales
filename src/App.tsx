@@ -13,6 +13,7 @@ import { TransactionSheet } from './screens/TransactionSheet';
 import { RecurringSheet } from './screens/Recurring';
 import { ImportSheet } from './screens/Import';
 import { AccountSheet } from './screens/Accounts';
+import { clearInvite, HouseholdSheet, peekInvite } from './screens/Household';
 import { Toasts } from './ui/Toasts';
 import { todayStr } from './lib/dates';
 
@@ -66,6 +67,12 @@ function Shell() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [importFor, setImportFor] = useState<string | null | undefined>(undefined);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const { storeKind } = useApp();
+  // An invitation link (?unirse=CODE) opens the household screen ready to join.
+  const [household, setHousehold] = useState<{ code: string | null } | null>(() => {
+    const code = peekInvite();
+    return code ? { code } : null;
+  });
   const [period, setPeriodState] = useState(() => ({ y: Number(todayStr().slice(0, 4)), m0: Number(todayStr().slice(5, 7)) - 1 }));
 
   useEffect(() => {
@@ -87,6 +94,7 @@ function Shell() {
     openRecurring: () => setRecurringOpen(true),
     openImport: (id) => setImportFor(id ?? null),
     openAccount: (id) => setAccountId(id),
+    openHousehold: () => setHousehold({ code: null }),
     period,
     setPeriod: (y, m0) => setPeriodState({ y, m0 })
   }), [tab, goTab, period]);
@@ -125,6 +133,7 @@ function Shell() {
       {recurringOpen && <RecurringSheet onClose={() => setRecurringOpen(false)} />}
       {importFor !== undefined && <ImportSheet accountId={importFor} onClose={() => setImportFor(undefined)} />}
       {accountId && <AccountSheet id={accountId} onClose={() => setAccountId(null)} />}
+      {household && storeKind === 'cloud' && <HouseholdSheet initialCode={household.code} onClose={() => { clearInvite(); setHousehold(null); }} />}
     </UICtx.Provider>
   );
 }

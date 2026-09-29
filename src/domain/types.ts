@@ -45,6 +45,8 @@ export interface Transaction {
   toExternalId: string | null;
   bankDescription: string | null;
   recurringId: string | null;
+  /** Person who entered it (shared households). */
+  createdBy: string | null;
   createdAt: string;
 }
 
@@ -106,8 +108,11 @@ export interface Rule {
   kind: Kind | null;
 }
 
+/** Personal preferences (one row per person, not shared with the household). */
 export interface Settings {
   id: 'me';
+  /** Active shared household (cloud only). */
+  householdId: string | null;
   name: string;
   startMonth: string;
   theme: 'system' | 'light' | 'dark';
@@ -128,6 +133,9 @@ export interface Snapshot {
   settings: Settings[];
 }
 export type CollectionName = keyof Snapshot;
+
+export interface Member { userId: string; role: 'owner' | 'member'; email: string | null; name: string }
+export interface Household { id: string; name: string; members: Member[] }
 export type Row<C extends CollectionName> = Snapshot[C][number];
 
 export const EMPTY_SNAPSHOT: Snapshot = {

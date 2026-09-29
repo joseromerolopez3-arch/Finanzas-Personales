@@ -58,7 +58,7 @@ export function defaultAccounts(openingDate = todayStr()): Account[] {
 
 export function defaultSettings(name = ''): Settings {
   return {
-    id: 'me', name, startMonth: todayStr().slice(0, 7), theme: 'system',
+    id: 'me', householdId: null, name, startMonth: todayStr().slice(0, 7), theme: 'system',
     onboarded: false, legacyImported: false, lastAccountId: null
   };
 }

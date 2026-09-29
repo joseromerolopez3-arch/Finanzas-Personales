@@ -1,13 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import type { Account, Category, CollectionName, Row, Settings, Snapshot } from '../domain/types';
+import type { Account, Category, CollectionName, Household, Row, Settings, Snapshot, Transaction } from '../domain/types';
 import { EMPTY_SNAPSHOT } from '../domain/types';
 import { defaultSettings } from '../domain/defaults';
 import { convertLegacy } from '../domain/legacy';
 import { COLLECTIONS } from '../data/schema';
 import { dropRows, mergeRows, safeStorage, type Store, type SyncState } from '../data/store';
 import { LocalStore } from '../data/localStore';
-import { CloudStore, SchemaMissingError } from '../data/cloudStore';
+import { CloudStore, SchemaMissingError, type RemoteChange } from '../data/cloudStore';
 import { supabase } from '../data/supabase';
 import { cloudEnabled } from '../config';
 
@@ -20,6 +20,13 @@ interface AppCtx {
   errorMessage: string;
   storeKind: 'local' | 'cloud' | null;
   email: string | null;
+  userId: string | null;
+  /** Shared household (cloud only) and the store to manage it. */
+  household: Household | null;
+  cloud: CloudStore | null;
+  refreshHousehold: () => Promise<void>;
+  /** Reloads everything after joining or leaving a household. */
+  restart: () => Promise<void>;
   data: Snapshot;
   settings: Settings;
   accounts: Account[];
@@ -52,6 +59,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const storeRef = useRef<Store | null>(null);
   const lastLoad = useRef(0);
   const [storeKind, setStoreKind] = useState<'local' | 'cloud' | null>(null);
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const onRemote = useCallback((c: RemoteChange) => {
+    setData((d) => ({
+      ...d,
+      [c.col]: c.kind === 'upsert' ? mergeRows(d[c.col] as { id: string }[], [c.row]) : dropRows(d[c.col] as { id: string }[], [c.id])
+    }));
+  }, []);
+
+  const refreshHousehold = useCallback(async () => {
+    const s = storeRef.current;
+    if (s instanceof CloudStore) setHousehold(await s.household().catch(() => null));
+  }, []);
 
   const toast = useCallback((message: string, action?: Toast['action']) => {
     const id = Date.now() + Math.random();
@@ -71,7 +92,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       let snap = await store.load();
       lastLoad.current = Date.now();
-      if (!snap.settings.length && store instanceof CloudStore) {
+      if (!snap.settings.length && !snap.accounts.length && !snap.transactions.length && store instanceof CloudStore) {
         const legacy = await store.loadLegacy();
         if (legacy && (legacy.profile || legacy.transactions?.length)) {
           snap = convertLegacy(legacy);
@@ -80,6 +101,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
       setData(snap);
+      if (store instanceof CloudStore) {
+        store.subscribe(onRemote);
+        setHousehold(await store.household().catch(() => null));
+      }
       // A password-recovery link signs in too: keep the "new password" screen on top.
       setPhase((p) => (p === 'recovery' ? p : 'ready'));
     } catch (e) {
@@ -87,16 +112,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setPhase('error');
     }
-  }, [toast]);
+  }, [toast, onRemote]);
 
   const startCloud = useCallback(async (session: Session) => {
     setEmail(session.user.email ?? null);
+    setUserId(session.user.id);
+    if (storeRef.current instanceof CloudStore) storeRef.current.close();
     await attach(new CloudStore(supabase!, session.user.id));
   }, [attach]);
 
   const startLocal = useCallback(() => {
     safeStorage()?.setItem(MODE_KEY, 'local');
     setEmail(null);
+    setUserId(null);
+    setHousehold(null);
     void attach(new LocalStore());
   }, [attach]);
 
@@ -134,8 +163,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [reload]);
 
-  const upsert = useCallback(<C extends CollectionName>(col: C, rows: Row<C>[]) => {
-    if (!rows.length) return;
+  const restart = useCallback(async () => {
+    const s = storeRef.current;
+    if (s) await attach(s);
+  }, [attach]);
+
+  const upsert = useCallback(<C extends CollectionName>(col: C, input: Row<C>[]) => {
+    if (!input.length) return;
+    let rows = input;
+    const cloud = storeRef.current instanceof CloudStore ? storeRef.current : null;
+    if (cloud && col === 'transactions') {
+      rows = (rows as Transaction[]).map((t) => (t.createdBy ? t : { ...t, createdBy: cloud.userId })) as Row<C>[];
+    }
+    if (cloud && col === 'settings') {
+      rows = (rows as Settings[]).map((x) => (x.householdId ? x : { ...x, householdId: cloud.householdId })) as Row<C>[];
+    }
     setData((d) => ({ ...d, [col]: mergeRows(d[col] as Row<C>[], rows) }));
     void storeRef.current?.upsert(col, rows);
   }, []);
@@ -169,6 +211,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     safeStorage()?.removeItem(MODE_KEY);
+    if (storeRef.current instanceof CloudStore) storeRef.current.close();
+    setHousehold(null);
     if (storeRef.current?.kind === 'cloud' && supabase) await supabase.auth.signOut();
     storeRef.current = null;
     setData(EMPTY_SNAPSHOT);
@@ -188,7 +232,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const categories = useMemo(() => [...data.categories].sort((a, b) => a.position - b.position), [data.categories]);
 
   const value: AppCtx = {
-    phase, errorMessage, storeKind, email, data, settings, accounts, activeAccounts, categories, sync,
+    phase, errorMessage, storeKind, email, userId, household, cloud: storeRef.current instanceof CloudStore ? storeRef.current : null,
+    refreshHousehold, restart, data, settings, accounts, activeAccounts, categories, sync,
     upsert, remove, saveSettings, replaceAll, startLocal, signOut, reload, toast, toasts, dismissToast, setPhase
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
