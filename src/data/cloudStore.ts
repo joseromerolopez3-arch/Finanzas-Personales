@@ -1,7 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import type { CollectionName, Household, Member, Row, Snapshot } from '../domain/types';
 import { EMPTY_SNAPSHOT } from '../domain/types';
-import type { LegacyData } from '../domain/legacy';
 import { COLLECTIONS, TABLES, fromDb, toDb } from './schema';
 import { dropRows, mergeRows, safeStorage, type Store, type SyncState } from './store';
 
@@ -166,15 +165,6 @@ export class CloudStore implements Store {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     return data;
-  }
-
-  /** Data saved by the first version of the app (one JSON document per key). */
-  async loadLegacy(): Promise<LegacyData | null> {
-    const { data, error } = await this.sb.from('kv_store').select('key,value').eq('user_id', this.userId);
-    if (error || !data?.length) return null;
-    const out: Record<string, unknown> = {};
-    for (const r of data as { key: string; value: unknown }[]) out[r.key] = r.value;
-    return out as LegacyData;
   }
 
   private enqueue(op: Op) {

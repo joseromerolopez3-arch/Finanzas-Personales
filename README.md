@@ -6,6 +6,9 @@ Stack: React + TypeScript + Vite · Supabase (auth + Postgres con RLS) · Netlif
 
 ## Puesta en marcha
 
-1. **Supabase**: ejecuta en orden los ficheros de `supabase/migrations/` (ya aplicados en el proyecto actual). No toca las tablas antiguas (`kv_store`, `resources`); cada persona ve sus datos anteriores importados automáticamente al entrar.
+1. **Supabase**: ejecuta en orden los ficheros de `supabase/migrations/` (ya aplicados en el proyecto actual).
 2. **Netlify**: conecta este repositorio (build `npm run build`, carpeta `dist`, ya definido en `netlify.toml`). Las variables públicas de Supabase están en `.env.production`; opcionalmente añade `VITE_ADMIN_EMAIL` para gestionar la sección Formación.
 3. **Local**: `npm install && npm run dev` · tests: `npm test`.
+
+## Pendiente
+- Conexión bancaria automática con Enable Banking (modo gratuito de uso personal): sincronización diaria mediante una Edge Function de Supabase, reutilizando la conciliación actual.

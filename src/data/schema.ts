@@ -17,7 +17,7 @@ export const TABLES: Record<CollectionName, { table: string; fields: string[] }>
   },
   recurringLog: { table: 'recurring_log', fields: ['id', 'recurringId', 'period', 'status', 'transactionId', 'at'] },
   rules: { table: 'rules', fields: ['id', 'pattern', 'categoryId', 'kind'] },
-  settings: { table: 'settings', fields: ['id', 'householdId', 'name', 'startMonth', 'theme', 'onboarded', 'legacyImported', 'lastAccountId'] }
+  settings: { table: 'settings', fields: ['id', 'householdId', 'name', 'startMonth', 'theme', 'onboarded', 'lastAccountId'] }
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionName[];

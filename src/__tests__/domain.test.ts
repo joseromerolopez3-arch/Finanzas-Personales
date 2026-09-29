@@ -5,7 +5,6 @@ import { balanceOf, totals, yearTotals } from '../domain/calc';
 import { occurrences, pending } from '../domain/recurring';
 import { closingFromRows, reconcile } from '../domain/reconcile';
 import { makeCategorizer } from '../domain/categorize';
-import { convertLegacy } from '../domain/legacy';
 import type { Account, BankRow, BudgetLine, Category, Recurring, Transaction } from '../domain/types';
 
 const tx = (p: Partial<Transaction>): Transaction => ({
@@ -151,32 +150,5 @@ describe('categorizer rules', () => {
   it('gives priority to explicit rules', () => {
     const c = makeCategorizer([{ id: '1', pattern: 'mercadona', categoryId: 'super', kind: null }], []);
     expect(c.suggest('COMPRA TARJ. MERCADONA 1234', 'expense')).toBe('super');
-  });
-});
-
-describe('legacy conversion', () => {
-  it('converts the first version data', () => {
-    const s = convertLegacy({
-      profile: { name: 'Rocío', startMonth: '2026-08' },
-      accounts: [{ id: 'cuenta1', label: 'Cuenta corriente', icon: '🏦', color: '#000' }, { id: 'efectivo', label: 'Efectivo', icon: '💵', color: '#000' }],
-      categories: { expense: [{ id: 'salud', label: 'Salud', icon: '💊', color: '#000' }], income: [] },
-      transactions: [
-        { id: 'o', type: 'opening', amount: 350, accountId: 'cuenta1', date: '2026-08-01' },
-        { id: 't1', type: 'expense', amount: 20, categoryId: 'salud', accountId: 'cuenta1', date: '2026-08-03', note: 'Farmacia' },
-        { id: 't2', type: 'transfer', amount: 50, fromAccountId: 'cuenta1', toAccountId: 'efectivo', date: '2026-08-04' }
-      ],
-      goals: { '2026-08': 200, '2026-09': 250 },
-      reminders: [{ id: 'hip', kind: 'expense', label: 'Hipoteca', recurrence: 'monthly', day: 5, createdAt: '2026-08-10T10:00:00Z' }],
-      reminderCompletions: { 'hip::2026-08': true }
-    });
-    expect(s.accounts[0]).toMatchObject({ openingBalance: 350, openingDate: '2026-08-01', kind: 'bank' });
-    expect(s.accounts[1].kind).toBe('cash');
-    expect(s.transactions).toHaveLength(2);
-    expect(s.transactions[1]).toMatchObject({ type: 'transfer', accountId: 'cuenta1', toAccountId: 'efectivo' });
-    expect(s.budgetYears[0]).toMatchObject({ year: 2026, mode: 'savings' });
-    expect(s.budgetLines[0].amounts[7]).toBe(200);
-    expect(s.recurring[0]).toMatchObject({ frequency: 'monthly', day: 5, startDate: '2026-08-01' });
-    expect(s.recurringLog[0].id).toBe('hip::2026-08');
-    expect(s.settings[0]).toMatchObject({ name: 'Rocío', onboarded: true });
   });
 });

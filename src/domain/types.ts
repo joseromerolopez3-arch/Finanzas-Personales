@@ -117,7 +117,6 @@ export interface Settings {
   startMonth: string;
   theme: 'system' | 'light' | 'dark';
   onboarded: boolean;
-  legacyImported: boolean;
   lastAccountId: string | null;
 }
 

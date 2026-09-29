@@ -1,6 +1,5 @@
 -- Cuentas Personales v2 — esquema normalizado con hogares compartidos.
--- No toca las tablas de la versión anterior (kv_store, resources): la app importa
--- automáticamente los datos de kv_store la primera vez que cada persona entra.
+-- Convive con la tabla `resources` (sección Formación) de la versión anterior.
 --
 -- Modelo: los datos (cuentas, movimientos, presupuesto…) pertenecen a un HOGAR.
 -- Cada persona tiene su propio hogar al entrar y puede invitar a otras con un código.
@@ -184,7 +183,6 @@ create table if not exists public.settings (
   start_month text not null default to_char(current_date, 'YYYY-MM'),
   theme text not null default 'system',
   onboarded boolean not null default false,
-  legacy_imported boolean not null default false,
   last_account_id text,
   updated_at timestamptz not null default now(),
   updated_by uuid,

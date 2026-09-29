@@ -3,7 +3,6 @@ import type { Session } from '@supabase/supabase-js';
 import type { Account, Category, CollectionName, Household, Row, Settings, Snapshot, Transaction } from '../domain/types';
 import { EMPTY_SNAPSHOT } from '../domain/types';
 import { defaultSettings } from '../domain/defaults';
-import { convertLegacy } from '../domain/legacy';
 import { COLLECTIONS } from '../data/schema';
 import { dropRows, mergeRows, safeStorage, type Store, type SyncState } from '../data/store';
 import { LocalStore } from '../data/localStore';
@@ -90,16 +89,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     setPhase('loading');
     try {
-      let snap = await store.load();
+      const snap = await store.load();
       lastLoad.current = Date.now();
-      if (!snap.settings.length && !snap.accounts.length && !snap.transactions.length && store instanceof CloudStore) {
-        const legacy = await store.loadLegacy();
-        if (legacy && (legacy.profile || legacy.transactions?.length)) {
-          snap = convertLegacy(legacy);
-          for (const c of COLLECTIONS) await store.upsert(c, snap[c] as never);
-          toast('Hemos traído tus datos de la versión anterior.');
-        }
-      }
       setData(snap);
       if (store instanceof CloudStore) {
         store.subscribe(onRemote);
