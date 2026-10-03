@@ -8,6 +8,7 @@ import { dropRows, mergeRows, safeStorage, type Store, type SyncState } from '..
 import { LocalStore } from '../data/localStore';
 import { CloudStore, SchemaMissingError, type RemoteChange } from '../data/cloudStore';
 import { supabase } from '../data/supabase';
+import { loadBank, type BankState } from '../data/bank';
 import { cloudEnabled } from '../config';
 
 export type Phase = 'loading' | 'auth' | 'recovery' | 'schema' | 'error' | 'ready';
@@ -26,6 +27,9 @@ interface AppCtx {
   refreshHousehold: () => Promise<void>;
   /** Reloads everything after joining or leaving a household. */
   restart: () => Promise<void>;
+  /** Bank connections of the household (cloud only). */
+  bank: BankState;
+  refreshBank: () => Promise<void>;
   data: Snapshot;
   settings: Settings;
   accounts: Account[];
@@ -60,6 +64,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [storeKind, setStoreKind] = useState<'local' | 'cloud' | null>(null);
   const [household, setHousehold] = useState<Household | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [bank, setBank] = useState<BankState>({ links: [], accounts: [] });
+
+  const refreshBank = useCallback(async () => {
+    const s = storeRef.current;
+    if (s instanceof CloudStore && s.householdId) setBank(await loadBank(s.householdId));
+  }, []);
 
   const onRemote = useCallback((c: RemoteChange) => {
     setData((d) => ({
@@ -93,8 +103,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastLoad.current = Date.now();
       setData(snap);
       if (store instanceof CloudStore) {
-        store.subscribe(onRemote);
+        store.subscribe(onRemote, () => void refreshBank());
         setHousehold(await store.household().catch(() => null));
+        void refreshBank();
+      } else {
+        setBank({ links: [], accounts: [] });
       }
       // A password-recovery link signs in too: keep the "new password" screen on top.
       setPhase((p) => (p === 'recovery' ? p : 'ready'));
@@ -103,7 +116,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setPhase('error');
     }
-  }, [toast, onRemote]);
+  }, [toast, onRemote, refreshBank]);
 
   const startCloud = useCallback(async (session: Session) => {
     setEmail(session.user.email ?? null);
@@ -224,7 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value: AppCtx = {
     phase, errorMessage, storeKind, email, userId, household, cloud: storeRef.current instanceof CloudStore ? storeRef.current : null,
-    refreshHousehold, restart, data, settings, accounts, activeAccounts, categories, sync,
+    refreshHousehold, restart, bank, refreshBank, data, settings, accounts, activeAccounts, categories, sync,
     upsert, remove, saveSettings, replaceAll, startLocal, signOut, reload, toast, toasts, dismissToast, setPhase
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

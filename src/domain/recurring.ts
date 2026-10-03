@@ -1,5 +1,6 @@
-import type { Recurring, RecurringLog } from './types';
-import { addMonths, makeDate, parseYmd, todayStr } from '../lib/dates';
+import type { Recurring, RecurringLog, Transaction } from './types';
+import { addMonths, diffDays, makeDate, parseYmd, todayStr } from '../lib/dates';
+import { similarity } from './text';
 
 export interface Occurrence {
   recurring: Recurring;
@@ -66,4 +67,23 @@ export function describeFrequency(r: Recurring): string {
   }
   const every = r.everyMonths > 1 ? `Cada ${r.everyMonths} meses` : 'Cada mes';
   return `${every}, el día ${r.day}`;
+}
+
+/**
+ * Marks as done the due scheduled items that a bank movement already covers: same type,
+ * similar name, amount within 15 % (when known) and date within a week.
+ */
+export function matchRecurring(due: Occurrence[], txs: Transaction[], at: string): RecurringLog[] {
+  const used = new Set<string>();
+  const logs: RecurringLog[] = [];
+  for (const o of due) {
+    const r = o.recurring;
+    const t = txs.find((x) => !used.has(x.id) && x.type === r.type && Math.abs(diffDays(x.date, o.dueDate)) <= 7
+      && (!r.amount || Math.abs(x.amount - r.amount) <= Math.max(1, r.amount * 0.15))
+      && similarity(r.name, `${x.note} ${x.bankDescription ?? ''}`) >= 0.5);
+    if (!t) continue;
+    used.add(t.id);
+    logs.push({ id: o.key, recurringId: r.id, period: o.period, status: 'done', transactionId: t.id, at });
+  }
+  return logs;
 }

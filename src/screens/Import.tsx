@@ -4,11 +4,11 @@ import type { ParsedStatement, TableMapping, Transaction } from '../domain/types
 import { useApp } from '../state/app';
 import { newTx, useCategorizer, useLookups } from '../state/hooks';
 import { balanceGap, reconcile, type ReviewRow } from '../domain/reconcile';
-import { prettify, similarity } from '../domain/text';
-import { pending } from '../domain/recurring';
+import { prettify } from '../domain/text';
+import { matchRecurring, pending } from '../domain/recurring';
 import { loadFile, tableToStatement, type LoadedFile } from '../import';
 import { applyMapping } from '../import/table';
-import { diffDays, shortDate, todayStr } from '../lib/dates';
+import { shortDate, todayStr } from '../lib/dates';
 import { eur, round2 } from '../lib/format';
 import { Sheet } from '../ui/Sheet';
 import { Field } from '../ui/controls';
@@ -106,19 +106,7 @@ export function ImportSheet({ accountId: initialAccount, onClose }: { accountId:
     upsert('transactions', [...created, ...extra, ...updated]);
     if (loaded?.kind === 'table' && mapping && account) upsert('accounts', [{ ...account, importMapping: mapping }]);
     // Mark scheduled payments/incomes that this statement already covers.
-    const due = pending(data.recurring, data.recurringLog, todayStr());
-    const logs = [];
-    const usedTx = new Set<string>();
-    for (const o of due) {
-      const r = o.recurring;
-      const t = all.find((x) => !usedTx.has(x.id) && x.type === r.type && Math.abs(diffDays(x.date, o.dueDate)) <= 7
-        && (!r.amount || Math.abs(x.amount - r.amount) <= Math.max(1, r.amount * 0.15))
-        && similarity(r.name, `${x.note} ${x.bankDescription ?? ''}`) >= 0.5);
-      if (t) {
-        usedTx.add(t.id);
-        logs.push({ id: o.key, recurringId: r.id, period: o.period, status: 'done' as const, transactionId: t.id, at: new Date().toISOString() });
-      }
-    }
+    const logs = matchRecurring(pending(data.recurring, data.recurringLog, todayStr()), all, new Date().toISOString());
     upsert('recurringLog', logs);
     setSummary({ created: created.length, matched: updated.length, recurring: logs.length });
     setStep('done');

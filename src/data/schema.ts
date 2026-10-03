@@ -7,7 +7,7 @@ export const TABLES: Record<CollectionName, { table: string; fields: string[] }>
   transactions: {
     table: 'transactions',
     fields: ['id', 'type', 'date', 'amount', 'accountId', 'toAccountId', 'categoryId', 'note', 'source', 'externalId',
-      'toExternalId', 'bankDescription', 'recurringId', 'createdBy', 'createdAt']
+      'toExternalId', 'bankDescription', 'recurringId', 'createdBy', 'needsReview', 'createdAt']
   },
   budgetYears: { table: 'budget_years', fields: ['id', 'year', 'mode'] },
   budgetLines: { table: 'budget_lines', fields: ['id', 'year', 'kind', 'categoryId', 'pattern', 'base', 'amounts'] },
@@ -23,11 +23,13 @@ export const TABLES: Record<CollectionName, { table: string; fields: string[] }>
 export const COLLECTIONS = Object.keys(TABLES) as CollectionName[];
 
 const snake = (s: string) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+/** Values for fields missing in rows saved before the field existed (NOT NULL columns). */
+const FIELD_DEFAULTS: Record<string, unknown> = { needsReview: false };
 const NUMERIC = new Set(['amount', 'openingBalance', 'base']);
 
 export function toDb(col: CollectionName, row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const f of TABLES[col].fields) out[snake(f)] = row[f] === undefined ? null : row[f];
+  for (const f of TABLES[col].fields) out[snake(f)] = row[f] === undefined ? FIELD_DEFAULTS[f] ?? null : row[f];
   return out;
 }
 
@@ -38,7 +40,7 @@ export function fromDb<C extends CollectionName>(col: C, row: Record<string, unk
     // numeric columns may arrive as strings depending on the driver.
     if (NUMERIC.has(f) && typeof v === 'string') v = Number(v);
     if (f === 'amounts' && Array.isArray(v)) v = v.map(Number);
-    out[f] = v;
+    out[f] = v === undefined ? FIELD_DEFAULTS[f] ?? null : v;
   }
   return out as unknown as Snapshot[C][number];
 }

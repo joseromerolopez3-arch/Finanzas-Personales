@@ -10,7 +10,7 @@ import type { Account, BankRow, BudgetLine, Category, Recurring, Transaction } f
 const tx = (p: Partial<Transaction>): Transaction => ({
   id: Math.random().toString(36).slice(2), type: 'expense', date: '2026-03-10', amount: 10, accountId: 'a',
   toAccountId: null, categoryId: null, note: '', source: 'manual', externalId: null, toExternalId: null,
-  bankDescription: null, recurringId: null, createdBy: null, createdAt: '', ...p
+  bankDescription: null, recurringId: null, createdBy: null, needsReview: false, createdAt: '', ...p
 });
 const acc: Account = {
   id: 'a', name: 'Cuenta', icon: '', color: '', kind: 'bank', openingBalance: 1000, openingDate: '2026-01-01',
