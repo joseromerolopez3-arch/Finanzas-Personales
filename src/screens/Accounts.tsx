@@ -6,7 +6,7 @@ import { newTx, useLookups } from '../state/hooks';
 import { useUI } from '../state/ui';
 import { balanceOf, touches } from '../domain/calc';
 import { colorFor } from '../domain/defaults';
-import { todayStr } from '../lib/dates';
+import { shortDate, todayStr } from '../lib/dates';
 import { eur, round2 } from '../lib/format';
 import { uid } from '../lib/id';
 import { Sheet } from '../ui/Sheet';
@@ -15,7 +15,7 @@ import { TxRow } from './Movements';
 
 /** Account detail: balance, balance adjustment (manual reconciliation) and latest movements. */
 export function AccountSheet({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, accounts, upsert } = useApp();
+  const { data, accounts, upsert, bank } = useApp();
   const ui = useUI();
   const lookups = useLookups();
   const acc = accounts.find((a) => a.id === id);
@@ -25,6 +25,8 @@ export function AccountSheet({ id, onClose }: { id: string; onClose: () => void 
   const txs = useMemo(() => data.transactions.filter((t) => touches(t, id)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15), [data.transactions, id]);
   if (!acc) return null;
   const bal = balanceOf(acc, data.transactions);
+  const linked = bank.accounts.find((b) => b.accountId === id);
+  const bankGap = linked?.balance != null && linked.balanceDate ? round2(linked.balance - balanceOf(acc, data.transactions, linked.balanceDate)) : null;
   if (editing) return <AccountEditSheet account={acc} onClose={() => setEditing(false)} />;
 
   const adjust = () => {
@@ -40,7 +42,19 @@ export function AccountSheet({ id, onClose }: { id: string; onClose: () => void 
       <div className="hero">
         <div className="hero-label">Saldo en la app</div>
         <div className="hero-amount display num">{eur(bal)}</div>
+        {linked && (
+          <div className="hero-note">
+            {linked.balance != null
+              ? <>Saldo en el banco: {eur(linked.balance)}{linked.balanceDate && ` (a ${shortDate(linked.balanceDate)})`}{bankGap ? ` · diferencia ${eur(bankGap)}` : ' · cuadra ✓'}</>
+              : 'Enlazada con el banco · pendiente de la primera sincronización'}
+          </div>
+        )}
       </div>
+      {linked && bankGap ? (
+        <button className="btn block" style={{ marginTop: 10 }} onClick={() => {
+          upsert('transactions', [newTx({ type: 'adjustment', amount: bankGap, accountId: id, date: linked.balanceDate!, note: 'Ajuste para cuadrar con el banco' })]);
+        }}>Cuadrar con el banco ({eur(bankGap)})</button>
+      ) : null}
       <div className="btn-row" style={{ marginTop: 12 }}>
         <button className="btn" onClick={() => { setAdjusting(!adjusting); setReal(bal); }}><Scale size={17} />Cuadrar saldo</button>
         <button className="btn" onClick={() => { onClose(); ui.openImport(id); }}><Upload size={17} />Importar extracto</button>

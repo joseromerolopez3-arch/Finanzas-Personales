@@ -90,7 +90,7 @@ export class CloudStore implements Store {
   }
 
   /** Live changes made by the other members of the household. */
-  subscribe(onChange: (c: RemoteChange) => void) {
+  subscribe(onChange: (c: RemoteChange) => void, onBank?: () => void) {
     if (this.channel) void this.sb.removeChannel(this.channel);
     const hid = this.householdId;
     if (!hid) return;
@@ -108,6 +108,11 @@ export class CloudStore implements Store {
         (this.cache[col] as { id: string }[]) = mergeRows(this.cache[col] as { id: string }[], [parsed]);
         onChange({ col, kind: 'upsert', row: parsed });
       });
+    }
+    if (onBank) {
+      for (const table of ['bank_links', 'bank_accounts']) {
+        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table, filter: `household_id=eq.${hid}` }, () => onBank());
+      }
     }
     this.channel = ch.subscribe();
   }

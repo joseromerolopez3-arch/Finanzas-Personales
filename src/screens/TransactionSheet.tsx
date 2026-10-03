@@ -39,7 +39,7 @@ export function TransactionSheet({ tx, preset, title, onSaved, onClose }: TxShee
     if (type === 'transfer' && (!toAccountId || toAccountId === accountId)) { setError('Elige dos cuentas distintas.'); return; }
     const value = round2(type === 'adjustment' ? sign * amount : amount);
     const fields: Partial<Transaction> = {
-      type, amount: value, accountId, date, note: note.trim(),
+      type, amount: value, accountId, date, note: note.trim(), needsReview: false,
       toAccountId: type === 'transfer' ? toAccountId : null,
       categoryId: type === 'income' || type === 'expense' ? effectiveCategory ?? null : null
     };

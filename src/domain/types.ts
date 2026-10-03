@@ -47,6 +47,8 @@ export interface Transaction {
   recurringId: string | null;
   /** Person who entered it (shared households). */
   createdBy: string | null;
+  /** Created automatically from the bank and not confirmed yet. */
+  needsReview: boolean;
   createdAt: string;
 }
 

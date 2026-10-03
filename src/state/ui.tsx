@@ -18,6 +18,8 @@ export interface UI {
   openImport: (accountId?: string) => void;
   openAccount: (id: string) => void;
   openHousehold: () => void;
+  openBanks: (mapLinkId?: string) => void;
+  openReview: () => void;
   period: { y: number; m0: number };
   setPeriod: (y: number, m0: number) => void;
 }

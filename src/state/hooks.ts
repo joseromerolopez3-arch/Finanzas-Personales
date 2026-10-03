@@ -48,6 +48,6 @@ export function useSortedCategories(kind: 'income' | 'expense') {
 export function newTx(p: Partial<Transaction> & Pick<Transaction, 'type' | 'amount' | 'accountId'>): Transaction {
   return {
     id: uid(), date: todayStr(), toAccountId: null, categoryId: null, note: '', source: 'manual', externalId: null,
-    toExternalId: null, bankDescription: null, recurringId: null, createdBy: null, createdAt: new Date().toISOString(), ...p
+    toExternalId: null, bankDescription: null, recurringId: null, createdBy: null, needsReview: false, createdAt: new Date().toISOString(), ...p
   };
 }

@@ -17,7 +17,7 @@ import { KindToggle } from './parts';
 import { downloadBackup, downloadCSV, readBackup } from './backup';
 
 export function SettingsScreen() {
-  const { settings, saveSettings, accounts, data, storeKind, email, signOut, replaceAll, toast, household, cloud, refreshHousehold } = useApp();
+  const { settings, saveSettings, accounts, data, storeKind, email, signOut, replaceAll, toast, household, cloud, refreshHousehold, bank } = useApp();
   const ui = useUI();
   const lookups = useLookups();
   const [name, setName] = useState(settings.name);
@@ -98,6 +98,13 @@ export function SettingsScreen() {
 
       <div className="section-head"><h2>Automatización y banco</h2></div>
       <div className="card flush">
+        {storeKind === 'cloud' && (
+          <button className="list-row" onClick={() => ui.openBanks()}>
+            <Ico icon="🔗" color="#2F6F5E" />
+            <div className="main-col"><div className="t1">Bancos conectados</div><div className="t2">{bank.links.length ? `${bank.links.length} conectado${bank.links.length > 1 ? 's' : ''} · sincronización diaria` : 'Conecta tu banco para tener todo al día'}</div></div>
+            <ChevronRight size={16} className="faint" />
+          </button>
+        )}
         <button className="list-row" onClick={() => ui.openImport()}>
           <Ico icon="🏦" color="#2F6F5E" />
           <div className="main-col"><div className="t1">Importar extracto bancario</div><div className="t2">CSV, Excel, Norma 43 u OFX · concilia con lo apuntado</div></div>

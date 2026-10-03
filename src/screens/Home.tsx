@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Inbox, Link2Off } from 'lucide-react';
+import { daysLeft } from '../data/bank';
+import { useToReview } from './Review';
 import { useApp } from '../state/app';
 import { useUI } from '../state/ui';
 import { inMonth, totals } from '../domain/calc';
@@ -11,7 +13,9 @@ import { MonthNav, Progress } from '../ui/controls';
 import { AccountsCard, BellButton, CompareList, KindToggle, OccurrenceRow, ShareList, SyncDot, useKindToggle, usePending } from './parts';
 
 export function HomeScreen() {
-  const { data, settings, categories } = useApp();
+  const { data, settings, categories, bank } = useApp();
+  const toReview = useToReview();
+  const renew = bank.links.filter((l) => l.status === 'expired' || (daysLeft(l.validUntil) ?? 99) <= 7);
   const ui = useUI();
   const { y, m0 } = ui.period;
   const [kind, setKind] = useKindToggle();
@@ -84,6 +88,28 @@ export function HomeScreen() {
           </div>
         </div>
       </div>
+
+      {renew.length > 0 && (
+        <button className="card" style={{ width: '100%', textAlign: 'left', marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, borderColor: 'var(--gold)' }} onClick={() => ui.openBanks()}>
+          <Link2Off size={22} />
+          <span style={{ flex: 1 }}>
+            <strong>Renueva la conexión con {renew.map((l) => l.aspspName).join(', ')}</strong>
+            <div className="small muted">{renew.some((l) => l.status === 'expired') ? 'La autorización ha caducado y no se descargan movimientos.' : 'La autorización caduca en pocos días.'}</div>
+          </span>
+          <ArrowRight size={18} />
+        </button>
+      )}
+
+      {toReview.length > 0 && (
+        <button className="card" style={{ width: '100%', textAlign: 'left', marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }} onClick={ui.openReview}>
+          <Inbox size={22} />
+          <span style={{ flex: 1 }}>
+            <strong>{toReview.length} movimiento{toReview.length > 1 ? 's' : ''} del banco por revisar</strong>
+            <div className="small muted">Confirma la categoría con un toque.</div>
+          </span>
+          <ArrowRight size={18} />
+        </button>
+      )}
 
       {!budget.mode && (
         <button className="card" style={{ width: '100%', textAlign: 'left', marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }} onClick={() => ui.goTab('budget')}>

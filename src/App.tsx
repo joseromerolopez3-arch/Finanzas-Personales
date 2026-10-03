@@ -14,6 +14,9 @@ import { RecurringSheet } from './screens/Recurring';
 import { ImportSheet } from './screens/Import';
 import { AccountSheet } from './screens/Accounts';
 import { clearInvite, HouseholdSheet, peekInvite } from './screens/Household';
+import { BanksSheet } from './screens/Banks';
+import { ReviewSheet } from './screens/Review';
+import { bankCall, bankCallback, clearBankCallback } from './data/bank';
 import { Toasts } from './ui/Toasts';
 import { todayStr } from './lib/dates';
 
@@ -67,7 +70,24 @@ function Shell() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [importFor, setImportFor] = useState<string | null | undefined>(undefined);
   const [accountId, setAccountId] = useState<string | null>(null);
-  const { storeKind } = useApp();
+  const { storeKind, toast, refreshBank } = useApp();
+  const [banks, setBanks] = useState<{ mapLinkId: string | null } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  // Coming back from the bank's website after authorising (/banco?code=…&state=…).
+  useEffect(() => {
+    const cb = bankCallback();
+    if (!cb) return;
+    clearBankCallback();
+    if (cb.error || !cb.code || !cb.state) {
+      toast(cb.error ? `El banco no completó la autorización: ${cb.error}` : 'El banco no completó la autorización.');
+      return;
+    }
+    toast('Conectando con tu banco…');
+    bankCall<{ linkId: string }>('complete', { code: cb.code, state: cb.state })
+      .then(async (r) => { await refreshBank(); setBanks({ mapLinkId: r.linkId }); })
+      .catch((e) => toast(e instanceof Error ? e.message : 'No se pudo completar la conexión.'));
+  }, [toast, refreshBank]);
   // An invitation link (?unirse=CODE) opens the household screen ready to join.
   const [household, setHousehold] = useState<{ code: string | null } | null>(() => {
     const code = peekInvite();
@@ -95,6 +115,8 @@ function Shell() {
     openImport: (id) => setImportFor(id ?? null),
     openAccount: (id) => setAccountId(id),
     openHousehold: () => setHousehold({ code: null }),
+    openBanks: (mapLinkId) => setBanks({ mapLinkId: mapLinkId ?? null }),
+    openReview: () => setReviewOpen(true),
     period,
     setPeriod: (y, m0) => setPeriodState({ y, m0 })
   }), [tab, goTab, period]);
@@ -133,6 +155,8 @@ function Shell() {
       {recurringOpen && <RecurringSheet onClose={() => setRecurringOpen(false)} />}
       {importFor !== undefined && <ImportSheet accountId={importFor} onClose={() => setImportFor(undefined)} />}
       {accountId && <AccountSheet id={accountId} onClose={() => setAccountId(null)} />}
+      {banks && storeKind === 'cloud' && <BanksSheet mapLinkId={banks.mapLinkId} onClose={() => setBanks(null)} />}
+      {reviewOpen && <ReviewSheet onClose={() => setReviewOpen(false)} />}
       {household && storeKind === 'cloud' && <HouseholdSheet initialCode={household.code} onClose={() => { clearInvite(); setHousehold(null); }} />}
     </UICtx.Provider>
   );

@@ -11,5 +11,13 @@ Stack: React + TypeScript + Vite · Supabase (auth + Postgres con RLS) · Cloudf
 3. **Supabase → Authentication → URL Configuration**: *Site URL* = la dirección de Cloudflare (`https://<proyecto>.pages.dev`) y añádela también en *Redirect URLs* como `https://<proyecto>.pages.dev/**` (enlaces de confirmación y recuperación de contraseña).
 4. **Local**: `npm install && npm run dev` · tests: `npm test`.
 
-## Pendiente
-- Conexión bancaria automática con Enable Banking (modo gratuito de uso personal): sincronización diaria mediante una Edge Function de Supabase, reutilizando la conciliación actual.
+## Conexión bancaria (Enable Banking)
+
+Sincronización diaria de movimientos y saldos con conciliación automática (función `bank` de Supabase + tarea `bank-sync-daily`).
+
+1. En [enablebanking.com](https://enablebanking.com) → Control Panel → *API applications* → registra una aplicación de **producción** con la URL de retorno `https://finanzas-personales-4yj.pages.dev/banco` y descarga la clave privada (`.pem`).
+2. Actívala en modo restringido (gratuito) vinculando las cuentas de cada persona (*Activate by linking accounts*).
+3. En Supabase → Edge Functions → Secrets añade `ENABLE_BANKING_APP_ID` y `ENABLE_BANKING_PRIVATE_KEY` (contenido del `.pem`).
+4. En la app: Ajustes → Bancos conectados → Conectar un banco.
+
+Código: la lógica está en `src/server` y `src/domain/bankSync.ts`; `npm run build:functions` la empaqueta en `supabase/functions/bank/dist/bank.js`, que la función desplegada importa fijada a un commit.
