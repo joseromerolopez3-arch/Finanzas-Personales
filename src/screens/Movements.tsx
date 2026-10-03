@@ -12,7 +12,7 @@ import { eur } from '../lib/format';
 import { Empty, Ico, MonthNav } from '../ui/controls';
 import { BellButton, ReconciledMark } from './parts';
 
-type TypeFilter = 'all' | 'expense' | 'income' | 'transfer' | 'unreconciled';
+type TypeFilter = 'all' | 'expense' | 'income' | 'transfer' | 'unreconciled' | 'review';
 
 export function MovementsScreen() {
   const { data, activeAccounts, categories } = useApp();
@@ -29,9 +29,11 @@ export function MovementsScreen() {
   const list = useMemo(() => {
     const needle = normalizeLoose(q);
     return data.transactions
-      .filter((t) => (needle ? true : inMonth(t, y, m0)))
+      .filter((t) => (needle || type === 'review' ? true : inMonth(t, y, m0)))
       .filter((t) => {
-        if (type === 'unreconciled') {
+        if (type === 'review') {
+          if (!t.needsReview) return false;
+        } else if (type === 'unreconciled') {
           if (t.type === 'transfer') return false;
           if (!importedAccounts.has(t.accountId) || isReconciled(t, t.accountId)) return false;
         } else if (type !== 'all' && t.type !== type) return false;
@@ -60,13 +62,15 @@ export function MovementsScreen() {
         <button className="icon-btn" onClick={() => ui.openImport()} aria-label="Importar extracto del banco" title="Importar extracto del banco"><Upload size={18} /></button>
         <BellButton />
       </div>
-      {!q && <MonthNav y={y} m0={m0} onChange={ui.setPeriod} />}
+      {!q && type !== 'review' && <MonthNav y={y} m0={m0} onChange={ui.setPeriod} />}
       <div className="search">
         <Search size={17} />
         <input className="input" type="search" placeholder="Buscar en todos los meses…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="chips scroll" style={{ marginTop: 10 }}>
-        {([['all', 'Todos'], ['expense', 'Gastos'], ['income', 'Ingresos'], ['transfer', 'Traspasos'], ...(importedAccounts.size ? [['unreconciled', 'Sin conciliar']] : [])] as [TypeFilter, string][]).map(([v, l]) => (
+        {([['all', 'Todos'], ['expense', 'Gastos'], ['income', 'Ingresos'], ['transfer', 'Traspasos'],
+          ...(data.transactions.some((t) => t.needsReview) ? [['review', 'Por revisar']] : []),
+          ...(importedAccounts.size ? [['unreconciled', 'Sin conciliar']] : [])] as [TypeFilter, string][]).map(([v, l]) => (
           <button key={v} className={`chip${type === v ? ' on' : ''}`} onClick={() => setType(v)}>{l}</button>
         ))}
       </div>
@@ -128,6 +132,7 @@ export function TxRow({ t, onClick, reconciledAccounts, lookups }: {
     amount = `−${eur(t.amount)}`;
   }
   const reconciled = reconciledAccounts?.has(t.accountId) && !!t.externalId;
+  if (t.needsReview) sub = `Por revisar · ${sub}`;
   return (
     <button className="list-row" onClick={onClick}>
       <Ico icon={icon} color={color} />
