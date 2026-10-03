@@ -13,12 +13,19 @@ const CORS = {
 
 export interface Env { get(name: string): string | undefined }
 
+/**
+ * Legacy JWT keys first: the new `sb_secret_…` keys are exchanged for a fresh JWT on every call and a
+ * small clock skew makes some requests fail with "JWT issued at future".
+ */
 function keyFrom(env: Env, jsonVar: string, legacyVar: string): string {
+  const legacy = env.get(legacyVar);
+  if (legacy) return legacy;
   try {
     const parsed = JSON.parse(env.get(jsonVar) ?? '{}') as Record<string, string>;
-    if (parsed.default) return parsed.default;
-  } catch { /* fall back to the legacy key */ }
-  return env.get(legacyVar) ?? '';
+    return parsed.default ?? '';
+  } catch {
+    return '';
+  }
 }
 
 /** `createClient` is injected so the bundle has no imports (the Edge runtime provides supabase-js). */

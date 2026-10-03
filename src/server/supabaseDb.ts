@@ -68,9 +68,16 @@ export class SupabaseDb implements Db {
       await this.run(this.sb.from(TABLES[col].table).upsert(chunk, { onConflict: 'household_id,id' }));
     }
   }
+  /** Query builders are lazy, so awaiting the same builder again re-sends the request. */
   private async run(q: PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<unknown[]> {
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
-    return (data as unknown[]) ?? [];
+    for (let attempt = 0; ; attempt++) {
+      const { data, error } = await q;
+      if (!error) return (data as unknown[]) ?? [];
+      if (attempt < 2 && /issued at future|fetch failed|timeout/i.test(error.message)) {
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        continue;
+      }
+      throw new Error(error.message);
+    }
   }
 }
