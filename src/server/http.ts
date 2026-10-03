@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import type { createClient as CreateClientFn } from '@supabase/supabase-js';
 import { EnableBanking } from './enableBanking';
 import { handle, UserError, type Caller } from './bankService';
 import { SupabaseDb } from './supabaseDb';
@@ -21,7 +21,8 @@ function keyFrom(env: Env, jsonVar: string, legacyVar: string): string {
   return env.get(legacyVar) ?? '';
 }
 
-export function makeHandler(env: Env) {
+/** `createClient` is injected so the bundle has no imports (the Edge runtime provides supabase-js). */
+export function makeHandler(env: Env, createClient: typeof CreateClientFn) {
   const url = env.get('SUPABASE_URL') ?? '';
   const secretKey = keyFrom(env, 'SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY');
   const publishableKey = keyFrom(env, 'SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY');

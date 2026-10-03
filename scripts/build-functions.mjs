@@ -1,15 +1,15 @@
 import { build } from 'esbuild';
 
+// Bundles the server logic of the `bank` Edge Function (no imports: supabase-js is injected).
 await build({
-  entryPoints: ['supabase/functions/bank/index.ts'],
-  outfile: 'supabase/functions/bank/dist/index.js',
+  entryPoints: ['src/server/http.ts'],
+  outfile: 'supabase/functions/bank/dist/bank.js',
   bundle: true,
   format: 'esm',
-  platform: 'browser',
+  platform: 'neutral',
   target: 'es2022',
-  conditions: ['deno', 'worker', 'browser'],
   minify: true,
   legalComments: 'none',
-  banner: { js: '// Generado por scripts/build-functions.mjs — no editar a mano.' }
+  banner: { js: '// Generado por scripts/build-functions.mjs a partir de src/server — no editar a mano.' }
 });
 console.log('bank function bundled');
