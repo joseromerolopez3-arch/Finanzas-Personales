@@ -95,6 +95,15 @@ let aspspCache: { country: string; at: number; list: { name: string; country: st
 
 export async function handle(action: string, body: Record<string, unknown>, caller: Caller, ctx: Ctx): Promise<unknown> {
   if (action === 'status') return { configured: !!ctx.eb };
+  if (action === 'verify') {
+    // Checks that Enable Banking accepts the application key (lists Spanish banks).
+    if (!ctx.eb) return { ok: false, error: 'Faltan las claves de Enable Banking.' };
+    try {
+      return { ok: true, banks: (await banks(ctx.eb, 'ES')).length };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
   if (caller.kind === 'cron') {
     if (action !== 'sync-all') throw new UserError('Acción no permitida', 403);
     return syncAll(ctx);
