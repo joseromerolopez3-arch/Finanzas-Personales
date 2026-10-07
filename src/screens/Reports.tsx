@@ -3,17 +3,17 @@ import { Download } from 'lucide-react';
 import { useApp } from '../state/app';
 import { useLookups } from '../state/hooks';
 import { useUI } from '../state/ui';
-import { budgetFor, compareCategories, monthlySavingsBudget } from '../domain/budget';
+import { budgetFor, compareCategories, inScope, monthlySavingsBudget, type Scope } from '../domain/budget';
 import { inYear, netWorth, sumTotals, yearTotals } from '../domain/calc';
 import { makeDate, MONTHS_SHORT, todayStr } from '../lib/dates';
 import { eur } from '../lib/format';
 import { YearNav } from '../ui/controls';
 import { LineChart, MonthColumns } from '../ui/charts';
-import { CompareList, KindToggle, ShareList, useKindToggle } from './parts';
+import { CompareList, KindToggle, ScopeChips, ShareList, useKindToggle } from './parts';
 import { downloadCSV } from './backup';
 
 export function ReportsScreen() {
-  const { data, activeAccounts, categories } = useApp();
+  const { data, activeAccounts, categories, properties, activeProperties } = useApp();
   const ui = useUI();
   const lookups = useLookups();
   const [year, setYear] = useState(ui.period.y);
@@ -38,6 +38,23 @@ export function ReportsScreen() {
     });
   }, [activeAccounts, data.transactions, year, lastMonth, today]);
   const monthsElapsed = Math.max(1, lastMonth + 1);
+
+  // Homes (cost centres): totals of the year per home and the category detail of the chosen one.
+  const [pickedScope, setScope] = useState<Scope>('all');
+  const homes = activeProperties.length > 0;
+  const scope: Scope = homes && (pickedScope === null || activeProperties.some((p) => p.id === pickedScope)) ? pickedScope : 'all';
+  const scopedTxs = useMemo(() => txsYear.filter((t) => inScope(t, scope)), [txsYear, scope]);
+  const scopedBudget = budgetFor(data.budgetYears, data.budgetLines, year, 0, 11, scope);
+  const perHome = useMemo(() => {
+    if (!homes) return [];
+    const list = [{ id: null as string | null, name: 'General', icon: '📋' }, ...properties.filter((p) => !p.archived || txsYear.some((t) => t.propertyId === p.id))];
+    return list.map((h) => {
+      const tx = txsYear.filter((t) => inScope(t, h.id));
+      const b = budgetFor(data.budgetYears, data.budgetLines, year, 0, 11, h.id);
+      const sum = (k: string) => tx.filter((t) => t.type === k).reduce((s, t) => s + t.amount, 0);
+      return { ...h, expense: sum('expense'), income: sum('income'), budget: b.mode === 'category' ? b.expense : null };
+    });
+  }, [homes, properties, txsYear, data.budgetYears, data.budgetLines, year]);
 
   return (
     <>
@@ -102,12 +119,34 @@ export function ReportsScreen() {
         </table>
       </div>
 
+      {homes && (
+        <>
+          <div className="section-head"><h2>Por vivienda</h2><span className="small muted">{year}</span></div>
+          <div className="card table-wrap" style={{ padding: '6px 10px' }}>
+            <table className="table">
+              <thead><tr><th>Vivienda</th><th>Gastos</th>{perHome.some((h) => h.budget != null) && <th>Presup.</th>}<th>Ingresos</th></tr></thead>
+              <tbody>
+                {perHome.map((h) => (
+                  <tr key={String(h.id)} onClick={() => setScope(h.id)} style={{ cursor: 'pointer' }} className={scope === h.id ? 'total' : ''}>
+                    <td style={{ textTransform: 'none' }}>{h.icon} {h.name}</td>
+                    <td>{eur(h.expense)}</td>
+                    {perHome.some((x) => x.budget != null) && <td className={h.budget != null && h.expense > h.budget ? 'neg' : ''}>{h.budget != null ? eur(h.budget) : '—'}</td>}
+                    <td>{h.income ? eur(h.income) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       <div className="section-head"><h2>Por categoría</h2><span className="small muted">{year}</span></div>
+      {homes && <div style={{ marginBottom: 10 }}><ScopeChips value={scope} onChange={setScope} /></div>}
       <div className="card">
         <KindToggle value={kind} onChange={setKind} />
-        {budget.mode === 'category'
-          ? <CompareList rows={compareCategories(txsYear, budget, categories, kind, lastMonth < 0 ? 0 : (lastMonth + 1) / 12)} kind={kind} />
-          : <ShareList txs={txsYear} kind={kind} months={monthsElapsed} />}
+        {scopedBudget.mode === 'category'
+          ? <CompareList rows={compareCategories(scopedTxs, scopedBudget, categories, kind, lastMonth < 0 ? 0 : (lastMonth + 1) / 12)} kind={kind} />
+          : <ShareList txs={scopedTxs} kind={kind} months={monthsElapsed} />}
       </div>
 
       {worth.some((v) => v != null) && (

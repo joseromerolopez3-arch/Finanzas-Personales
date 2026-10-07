@@ -8,7 +8,7 @@ import { addDays, longDate, MONTHS_LONG, todayStr } from '../lib/dates';
 import { eur } from '../lib/format';
 import { uid } from '../lib/id';
 import { Sheet } from '../ui/Sheet';
-import { AccountChips, Empty, Field, Ico, MoneyInput, Segmented } from '../ui/controls';
+import { AccountChips, Empty, Field, Ico, MoneyInput, PropertyChips, Segmented } from '../ui/controls';
 import { OccurrenceRow, usePending } from './parts';
 
 export function RecurringSheet({ onClose }: { onClose: () => void }) {
@@ -61,9 +61,9 @@ export function RecurringSheet({ onClose }: { onClose: () => void }) {
 }
 
 function RecurringEdit({ item, onClose }: { item?: Recurring; onClose: () => void }) {
-  const { upsert, remove, activeAccounts, categories, data } = useApp();
+  const { upsert, remove, activeAccounts, activeProperties, categories, data } = useApp();
   const [r, setR] = useState<Recurring>(item ?? {
-    id: uid(), name: '', type: 'expense', amount: null, categoryId: null, accountId: null, frequency: 'monthly', everyMonths: 1,
+    id: uid(), name: '', type: 'expense', amount: null, categoryId: null, accountId: null, propertyId: null, frequency: 'monthly', everyMonths: 1,
     day: Number(todayStr().slice(8, 10)), month: null, startDate: todayStr(), endDate: null, active: true
   });
   const set = (p: Partial<Recurring>) => setR((x) => ({ ...x, ...p }));
@@ -124,6 +124,9 @@ function RecurringEdit({ item, onClose }: { item?: Recurring; onClose: () => voi
         </select>
       </Field>
       <div className="field"><span className="label">Cuenta (opcional)</span><AccountChips accounts={activeAccounts} value={r.accountId} onChange={(accountId) => set({ accountId: accountId === r.accountId ? null : accountId })} /></div>
+      {activeProperties.length > 0 && (
+        <div className="field"><span className="label">Vivienda</span><PropertyChips properties={activeProperties} value={r.propertyId ?? null} onChange={(propertyId) => set({ propertyId })} /></div>
+      )}
       {item && (
         <label className="row-flex field"><input type="checkbox" checked={r.active} onChange={(e) => set({ active: e.target.checked })} /> Activo</label>
       )}

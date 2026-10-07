@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Account, Category } from '../domain/types';
+import type { Account, Category, Property } from '../domain/types';
 import { EMOJIS } from '../domain/defaults';
 import { MONTHS_SHORT, monthLabel } from '../lib/dates';
 import { parseAmount, toInput } from '../lib/format';
@@ -112,6 +112,20 @@ export function AccountChips({ accounts, value, onChange, exclude }: { accounts:
       {accounts.filter((a) => a.id !== exclude).map((a) => (
         <button type="button" key={a.id} className={`chip${value === a.id ? ' on' : ''}`} onClick={() => onChange(a.id)}>
           <span>{a.icon}</span>{a.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Home a movement or budget belongs to; «General» = not tied to any home. */
+export function PropertyChips({ properties, value, onChange }: { properties: Property[]; value: string | null; onChange: (id: string | null) => void }) {
+  return (
+    <div className="chips">
+      <button type="button" className={`chip${value === null ? ' on' : ''}`} onClick={() => onChange(null)}>General</button>
+      {properties.map((p) => (
+        <button type="button" key={p.id} className={`chip${value === p.id ? ' on' : ''}`} onClick={() => onChange(p.id)}>
+          <span>{p.icon}</span>{p.name}
         </button>
       ))}
     </div>

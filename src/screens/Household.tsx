@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, Share2, UserMinus } from 'lucide-react';
 import { useApp } from '../state/app';
+import { KIND_LABEL, kindIcon } from './Usage';
 import { Sheet } from '../ui/Sheet';
 import { Field } from '../ui/controls';
 
@@ -20,15 +21,15 @@ export function clearInvite() {
 }
 
 export function HouseholdSheet({ onClose, initialCode }: { onClose: () => void; initialCode?: string | null }) {
-  const { household, cloud, userId, settings, refreshHousehold, restart, toast, upsert } = useApp();
+  const { household, households, cloud, userId, refreshHousehold, restart, switchHousehold, toast } = useApp();
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState(household?.name ?? '');
-  const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
   const me = household?.members.find((m) => m.userId === userId);
   const owner = me?.role === 'owner';
+  const personal = household?.kind === 'personal';
 
-  useEffect(() => { void cloud?.myHouseholds().then((l) => setOthers(l.filter((h) => h.id !== household?.id))); }, [cloud, household?.id]);
+  const others = households.filter((h) => h.id !== household?.id);
   if (!cloud || !household) return null;
 
   const run = async (fn: () => Promise<void>) => {
@@ -45,15 +46,26 @@ export function HouseholdSheet({ onClose, initialCode }: { onClose: () => void; 
   };
 
   return (
-    <Sheet title="Hogar compartido" onClose={onClose}>
+    <Sheet title={personal ? 'Finanzas personales' : 'Hogar compartido'} onClose={onClose}>
       <p className="muted small" style={{ marginTop: 0 }}>
-        Todas las personas del hogar ven y apuntan en las mismas cuentas, movimientos y presupuesto, en tiempo real. Tu nombre y tus preferencias son solo tuyos.
+        {personal
+          ? 'Este espacio es solo tuyo: nadie más ve sus cuentas, movimientos ni presupuesto.'
+          : 'Todas las personas del hogar ven y apuntan en las mismas cuentas, movimientos y presupuesto, en tiempo real. Tu nombre y tus preferencias son solo tuyos.'}
       </p>
-      <Field label="Nombre del hogar">
+      <Field label={personal ? 'Nombre' : 'Nombre del hogar'}>
         <input className="input" value={name} disabled={!owner} onChange={(e) => setName(e.target.value)}
           onBlur={() => name.trim() && name.trim() !== household.name && void run(async () => { await cloud.renameHousehold(name.trim()); await refreshHousehold(); })} />
       </Field>
 
+      {personal ? (
+        <>
+          <button className="btn block" style={{ marginTop: 16 }} disabled={busy}
+            onClick={() => confirm('¿Convertir este espacio en un hogar compartido? Las personas que invites verán todos sus datos.') && void run(async () => { await cloud.setKind('shared'); await refreshHousehold(); })}>
+            Compartir este espacio con alguien
+          </button>
+          <p className="hint">Si prefieres mantenerlo privado y llevar aparte las cuentas en común, añade un hogar compartido desde Ajustes → Tipo de uso.</p>
+        </>
+      ) : (<>
       <div className="section-head"><h2>Personas ({household.members.length})</h2></div>
       <div className="card flush">
         {household.members.map((m) => (
@@ -91,16 +103,17 @@ export function HouseholdSheet({ onClose, initialCode }: { onClose: () => void; 
           <button className="btn primary block" disabled={busy} onClick={() => void run(async () => setCode(await cloud.createInvite()))}>Crear invitación</button>
         )}
       </div>
+      </>)}
 
       <JoinBox initialCode={initialCode ?? null} onJoined={async () => { await restart(); onClose(); }} />
 
       {others.length > 0 && (
         <>
-          <div className="section-head"><h2>Tus otros hogares</h2></div>
+          <div className="section-head"><h2>Tus otros espacios</h2></div>
           <div className="card flush">
             {others.map((h) => (
-              <button key={h.id} className="list-row" onClick={() => { upsert('settings', [{ ...settings, householdId: h.id }]); void restart(); onClose(); }}>
-                <div className="main-col"><div className="t1">{h.name}</div><div className="t2">Cambiar a este hogar</div></div>
+              <button key={h.id} className="list-row" onClick={() => { onClose(); void switchHousehold(h.id); }}>
+                <div className="main-col"><div className="t1">{kindIcon(h.kind)} {h.name}</div><div className="t2">{KIND_LABEL[h.kind]} · cambiar a este</div></div>
               </button>
             ))}
           </div>

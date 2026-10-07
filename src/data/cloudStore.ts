@@ -1,5 +1,5 @@
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
-import type { CollectionName, Household, Member, Row, Snapshot } from '../domain/types';
+import type { CollectionName, Household, HouseholdKind, HouseholdRef, Member, Row, Snapshot } from '../domain/types';
 import { EMPTY_SNAPSHOT } from '../domain/types';
 import { COLLECTIONS, TABLES, fromDb, toDb } from './schema';
 import { dropRows, mergeRows, safeStorage, type Store, type SyncState } from './store';
@@ -90,7 +90,7 @@ export class CloudStore implements Store {
   }
 
   /** Live changes made by the other members of the household. */
-  subscribe(onChange: (c: RemoteChange) => void) {
+  subscribe(onChange: (c: RemoteChange) => void, onBank?: () => void) {
     if (this.channel) void this.sb.removeChannel(this.channel);
     const hid = this.householdId;
     if (!hid) return;
@@ -109,6 +109,11 @@ export class CloudStore implements Store {
         onChange({ col, kind: 'upsert', row: parsed });
       });
     }
+    if (onBank) {
+      for (const table of ['bank_links', 'bank_accounts']) {
+        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table, filter: `household_id=eq.${hid}` }, () => onBank());
+      }
+    }
     this.channel = ch.subscribe();
   }
 
@@ -123,18 +128,26 @@ export class CloudStore implements Store {
     const hid = this.householdId;
     if (!hid) return null;
     const [{ data: h }, { data: members }] = await Promise.all([
-      this.sb.from('households').select('id,name').eq('id', hid).maybeSingle(),
+      this.sb.from('households').select('id,name,kind').eq('id', hid).maybeSingle(),
       this.sb.from('household_members').select('user_id,role,email,name,joined_at').eq('household_id', hid).order('joined_at')
     ]);
     if (!h) return null;
     return {
-      id: h.id, name: h.name,
+      id: h.id, name: h.name, kind: h.kind ?? 'shared',
       members: (members ?? []).map((m): Member => ({ userId: m.user_id, role: m.role, email: m.email, name: m.name }))
     };
   }
-  async myHouseholds(): Promise<{ id: string; name: string }[]> {
-    const { data } = await this.sb.from('households').select('id,name').order('created_at');
-    return data ?? [];
+  async myHouseholds(): Promise<HouseholdRef[]> {
+    const { data } = await this.sb.from('households').select('id,name,kind').order('created_at');
+    return (data ?? []).map((h) => ({ id: h.id, name: h.name, kind: h.kind ?? 'shared' }));
+  }
+  /** Personal finances or shared household (only changes labels and what the app offers). */
+  async setKind(kind: HouseholdKind, name?: string) {
+    await this.call(this.sb.from('households').update(name ? { kind, name } : { kind }).eq('id', this.householdId!));
+  }
+  /** One more household (e.g. a personal one besides the shared one). The active one does not change. */
+  async createHousehold(name: string, kind: HouseholdKind): Promise<string> {
+    return (await this.call(this.sb.rpc('create_household', { hname: name, hkind: kind }))) as string;
   }
   async renameHousehold(name: string) {
     await this.call(this.sb.from('households').update({ name }).eq('id', this.householdId!));

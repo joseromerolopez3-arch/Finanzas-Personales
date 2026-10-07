@@ -12,31 +12,37 @@ import { eur } from '../lib/format';
 import { Empty, Ico, MonthNav } from '../ui/controls';
 import { BellButton, ReconciledMark } from './parts';
 
-type TypeFilter = 'all' | 'expense' | 'income' | 'transfer' | 'unreconciled';
+type TypeFilter = 'all' | 'expense' | 'income' | 'transfer' | 'unreconciled' | 'review';
 
 export function MovementsScreen() {
-  const { data, activeAccounts, categories } = useApp();
+  const { data, activeAccounts, categories, properties } = useApp();
   const ui = useUI();
   const { y, m0 } = ui.period;
-  const { cat, acc } = useLookups();
+  const lookups = useLookups();
+  const { cat } = lookups;
   const [q, setQ] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  /** '' = every home, 'general' = not tied to a home, otherwise a property id. */
+  const [home, setHome] = useState('');
 
   const importedAccounts = useMemo(() => new Set(data.transactions.filter((t) => t.externalId).map((t) => t.accountId)), [data.transactions]);
 
   const list = useMemo(() => {
     const needle = normalizeLoose(q);
     return data.transactions
-      .filter((t) => (needle ? true : inMonth(t, y, m0)))
+      .filter((t) => (needle || type === 'review' ? true : inMonth(t, y, m0)))
       .filter((t) => {
-        if (type === 'unreconciled') {
+        if (type === 'review') {
+          if (!t.needsReview) return false;
+        } else if (type === 'unreconciled') {
           if (t.type === 'transfer') return false;
           if (!importedAccounts.has(t.accountId) || isReconciled(t, t.accountId)) return false;
         } else if (type !== 'all' && t.type !== type) return false;
         if (accountId && t.accountId !== accountId && t.toAccountId !== accountId) return false;
         if (categoryId && t.categoryId !== categoryId) return false;
+        if (home && (t.propertyId ?? 'general') !== home) return false;
         if (needle) {
           const hay = normalizeLoose(`${t.note} ${t.bankDescription ?? ''} ${cat(t.categoryId).name} ${String(t.amount).replace('.', ',')}`);
           if (!hay.includes(needle)) return false;
@@ -44,7 +50,7 @@ export function MovementsScreen() {
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-  }, [data.transactions, q, type, accountId, categoryId, y, m0, cat, importedAccounts]);
+  }, [data.transactions, q, type, accountId, categoryId, home, y, m0, cat, importedAccounts]);
 
   const groups = useMemo(() => {
     const g = new Map<string, Transaction[]>();
@@ -60,25 +66,34 @@ export function MovementsScreen() {
         <button className="icon-btn" onClick={() => ui.openImport()} aria-label="Importar extracto del banco" title="Importar extracto del banco"><Upload size={18} /></button>
         <BellButton />
       </div>
-      {!q && <MonthNav y={y} m0={m0} onChange={ui.setPeriod} />}
+      {!q && type !== 'review' && <MonthNav y={y} m0={m0} onChange={ui.setPeriod} />}
       <div className="search">
         <Search size={17} />
         <input className="input" type="search" placeholder="Buscar en todos los meses…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="chips scroll" style={{ marginTop: 10 }}>
-        {([['all', 'Todos'], ['expense', 'Gastos'], ['income', 'Ingresos'], ['transfer', 'Traspasos'], ...(importedAccounts.size ? [['unreconciled', 'Sin conciliar']] : [])] as [TypeFilter, string][]).map(([v, l]) => (
+        {([['all', 'Todos'], ['expense', 'Gastos'], ['income', 'Ingresos'], ['transfer', 'Traspasos'],
+          ...(data.transactions.some((t) => t.needsReview) ? [['review', 'Por revisar']] : []),
+          ...(importedAccounts.size ? [['unreconciled', 'Sin conciliar']] : [])] as [TypeFilter, string][]).map(([v, l]) => (
           <button key={v} className={`chip${type === v ? ' on' : ''}`} onClick={() => setType(v)}>{l}</button>
         ))}
       </div>
       <div className="row-flex" style={{ marginTop: 8 }}>
         <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Cuenta">
-          <option value="">Todas las cuentas</option>
+          <option value="">{properties.length ? 'Cuentas' : 'Todas las cuentas'}</option>
           {activeAccounts.map((a) => <option key={a.id} value={a.id}>{a.icon} {a.name}</option>)}
         </select>
         <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} aria-label="Categoría">
-          <option value="">Todas las categorías</option>
+          <option value="">{properties.length ? 'Categorías' : 'Todas las categorías'}</option>
           {categories.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
         </select>
+        {properties.length > 0 && (
+          <select className="input" value={home} onChange={(e) => setHome(e.target.value)} aria-label="Vivienda">
+            <option value="">Viviendas</option>
+            <option value="general">General</option>
+            {properties.map((p) => <option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
+          </select>
+        )}
       </div>
       {type === 'unreconciled' && (
         <p className="hint">Movimientos apuntados a mano en cuentas con extractos importados que aún no aparecen en el banco.</p>
@@ -99,7 +114,7 @@ export function MovementsScreen() {
               {net !== 0 && <span className="num">{net > 0 ? '+' : ''}{eur(net)}</span>}
             </div>
             <div className="card flush">
-              {items.map((t) => <TxRow key={t.id} t={t} onClick={() => ui.openTx({ tx: t })} reconciledAccounts={importedAccounts} lookups={{ cat, acc }} />)}
+              {items.map((t) => <TxRow key={t.id} t={t} onClick={() => ui.openTx({ tx: t })} reconciledAccounts={importedAccounts} lookups={lookups} />)}
             </div>
           </div>
         );
@@ -112,7 +127,7 @@ export function MovementsScreen() {
 export function TxRow({ t, onClick, reconciledAccounts, lookups }: {
   t: Transaction; onClick: () => void; reconciledAccounts?: Set<string>; lookups: ReturnType<typeof useLookups>;
 }) {
-  const { cat, acc } = lookups;
+  const { cat, acc, home } = lookups;
   const who = useMemberName()(t.createdBy);
   const c = cat(t.categoryId);
   const a = acc(t.accountId);
@@ -128,6 +143,9 @@ export function TxRow({ t, onClick, reconciledAccounts, lookups }: {
     amount = `−${eur(t.amount)}`;
   }
   const reconciled = reconciledAccounts?.has(t.accountId) && !!t.externalId;
+  const h = t.type === 'income' || t.type === 'expense' ? home(t.propertyId) : null;
+  if (h) sub = `${c.name} · ${h.icon} ${h.name} · ${a.name}`;
+  if (t.needsReview) sub = `Por revisar · ${sub}`;
   return (
     <button className="list-row" onClick={onClick}>
       <Ico icon={icon} color={color} />

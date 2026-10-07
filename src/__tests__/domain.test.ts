@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseAmount } from '../lib/format';
-import { buildAmounts, budgetFor, compareCategories, proposeFromHistory } from '../domain/budget';
+import { buildAmounts, budgetFor, compareCategories, inScope, lineId, proposeFromHistory } from '../domain/budget';
 import { balanceOf, totals, yearTotals } from '../domain/calc';
-import { occurrences, pending } from '../domain/recurring';
+import { inheritFromRecurring, occurrences, pending } from '../domain/recurring';
 import { closingFromRows, reconcile } from '../domain/reconcile';
 import { makeCategorizer } from '../domain/categorize';
 import type { Account, BankRow, BudgetLine, Category, Recurring, Transaction } from '../domain/types';
@@ -10,7 +10,7 @@ import type { Account, BankRow, BudgetLine, Category, Recurring, Transaction } f
 const tx = (p: Partial<Transaction>): Transaction => ({
   id: Math.random().toString(36).slice(2), type: 'expense', date: '2026-03-10', amount: 10, accountId: 'a',
   toAccountId: null, categoryId: null, note: '', source: 'manual', externalId: null, toExternalId: null,
-  bankDescription: null, recurringId: null, createdBy: null, createdAt: '', ...p
+  bankDescription: null, recurringId: null, propertyId: null, createdBy: null, needsReview: false, createdAt: '', ...p
 });
 const acc: Account = {
   id: 'a', name: 'Cuenta', icon: '', color: '', kind: 'bank', openingBalance: 1000, openingDate: '2026-01-01',
@@ -55,10 +55,10 @@ describe('budget', () => {
   });
 
   const lines: BudgetLine[] = [
-    { id: '1', year: 2026, kind: 'income', categoryId: 'nomina', pattern: 'monthly', base: 2000, amounts: buildAmounts('monthly', 2000) },
-    { id: '2', year: 2026, kind: 'expense', categoryId: 'super', pattern: 'monthly', base: 400, amounts: buildAmounts('monthly', 400) },
-    { id: '3', year: 2026, kind: 'expense', categoryId: 'ibi', pattern: 'months', base: 600, amounts: buildAmounts('months', 600, [5]) },
-    { id: '4', year: 2026, kind: 'savings', categoryId: null, pattern: 'monthly', base: 300, amounts: buildAmounts('monthly', 300) }
+    { id: '1', year: 2026, kind: 'income', categoryId: 'nomina', propertyId: null, pattern: 'monthly', base: 2000, amounts: buildAmounts('monthly', 2000) },
+    { id: '2', year: 2026, kind: 'expense', categoryId: 'super', propertyId: null, pattern: 'monthly', base: 400, amounts: buildAmounts('monthly', 400) },
+    { id: '3', year: 2026, kind: 'expense', categoryId: 'ibi', propertyId: null, pattern: 'months', base: 600, amounts: buildAmounts('months', 600, [5]) },
+    { id: '4', year: 2026, kind: 'savings', categoryId: null, propertyId: null, pattern: 'monthly', base: 300, amounts: buildAmounts('monthly', 300) }
   ];
 
   it('derives savings from categories in category mode', () => {
@@ -100,7 +100,7 @@ describe('budget', () => {
 
 describe('recurring', () => {
   const base: Recurring = {
-    id: 'r', name: 'Hipoteca', type: 'expense', amount: 700, categoryId: null, accountId: null, frequency: 'monthly',
+    id: 'r', name: 'Hipoteca', type: 'expense', amount: 700, categoryId: null, accountId: null, propertyId: null, frequency: 'monthly',
     everyMonths: 1, day: 31, month: null, startDate: '2026-01-15', endDate: null, active: true
   };
   it('clamps the day to the month length and respects the start date', () => {
@@ -150,5 +150,53 @@ describe('categorizer rules', () => {
   it('gives priority to explicit rules', () => {
     const c = makeCategorizer([{ id: '1', pattern: 'mercadona', categoryId: 'super', kind: null }], []);
     expect(c.suggest('COMPRA TARJ. MERCADONA 1234', 'expense')).toBe('super');
+  });
+});
+
+describe('homes (cost centres)', () => {
+  const years = [{ id: '2027', year: 2027, mode: 'category' as const }];
+  const line = (categoryId: string, propertyId: string | null, base: number): BudgetLine => ({
+    id: lineId(2027, 'expense', categoryId, propertyId), year: 2027, kind: 'expense', categoryId, propertyId,
+    pattern: 'monthly', base, amounts: buildAmounts('monthly', base)
+  });
+  const lines = [line('luz', 'madrid', 60), line('luz', 'playa', 25), line('coche', null, 100)];
+
+  it('keeps old ids for General lines and separates homes', () => {
+    expect(lineId(2027, 'expense', 'luz', null)).toBe('2027:luz');
+    expect(lineId(2027, 'expense', 'luz', 'playa')).toBe('2027:playa:luz');
+    expect(lineId(2027, 'savings', null, 'playa')).toBe('2027:savings');
+  });
+
+  it('budgets per home and adds everything up', () => {
+    expect(budgetFor(years, lines, 2027, 0, 0).expense).toBe(185);
+    expect(budgetFor(years, lines, 2027, 0, 0, 'madrid').byCategory.get('luz')).toBe(60);
+    expect(budgetFor(years, lines, 2027, 0, 0, 'playa').expense).toBe(25);
+    expect(budgetFor(years, lines, 2027, 0, 0, null).expense).toBe(100);
+    expect(budgetFor(years, lines, 2027, 0, 0, 'all').byCategory.get('luz')).toBe(85);
+  });
+
+  it('filters movements by home (old rows without a home are General)', () => {
+    const old = { ...tx({}), propertyId: undefined } as unknown as Transaction;
+    expect(inScope(old, null)).toBe(true);
+    expect(inScope(tx({ propertyId: 'playa' }), null)).toBe(false);
+    expect(inScope(tx({ propertyId: 'playa' }), 'playa')).toBe(true);
+    expect(inScope(tx({ propertyId: 'playa' }), 'all')).toBe(true);
+  });
+
+  it('proposes a budget per home from its own movements', () => {
+    const hist = [tx({ date: '2026-01-05', amount: 50, categoryId: 'luz', propertyId: 'playa' }), tx({ date: '2026-01-05', amount: 90, categoryId: 'luz' })];
+    const out = proposeFromHistory(hist, 2026, 2027, [{ id: 'luz', kind: 'expense', name: 'Luz', icon: '⚡', color: '', position: 0, archived: false }], 'playa');
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ id: '2027:playa:luz', propertyId: 'playa', base: 50 });
+  });
+
+  it('movements covered by a scheduled item take its home and category', () => {
+    const r: Recurring = {
+      id: 'luzplaya', name: 'Luz playa', type: 'expense', amount: 30, categoryId: 'luz', accountId: null, propertyId: 'playa',
+      frequency: 'monthly', everyMonths: 1, day: 5, month: null, startDate: '2026-01-01', endDate: null, active: true
+    };
+    const t = tx({ id: 'b1' });
+    const out = inheritFromRecurring([t, tx({ id: 'b2' })], [{ id: 'x', recurringId: 'luzplaya', period: '2026-03', status: 'done', transactionId: 'b1', at: '' }], [r]);
+    expect(out).toEqual([{ ...t, recurringId: 'luzplaya', propertyId: 'playa', categoryId: 'luz' }]);
   });
 });
