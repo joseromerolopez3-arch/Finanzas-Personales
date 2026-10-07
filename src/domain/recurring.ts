@@ -87,3 +87,15 @@ export function matchRecurring(due: Occurrence[], txs: Transaction[], at: string
   }
   return logs;
 }
+
+/** Movements that a scheduled item covers inherit its home and category when they had none. */
+export function inheritFromRecurring(txs: Transaction[], logs: RecurringLog[], recurring: Recurring[]): Transaction[] {
+  const byTx = new Map(logs.filter((l) => l.transactionId).map((l) => [l.transactionId!, l.recurringId]));
+  const rec = new Map(recurring.map((r) => [r.id, r]));
+  const out: Transaction[] = [];
+  for (const t of txs) {
+    const r = rec.get(byTx.get(t.id) ?? '');
+    if (r) out.push({ ...t, recurringId: t.recurringId ?? r.id, propertyId: t.propertyId ?? r.propertyId ?? null, categoryId: t.categoryId ?? r.categoryId });
+  }
+  return out;
+}

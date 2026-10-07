@@ -7,10 +7,10 @@ import type { TxSheetOptions } from '../state/ui';
 import { addDays, todayStr } from '../lib/dates';
 import { round2 } from '../lib/format';
 import { Sheet } from '../ui/Sheet';
-import { AccountChips, CategoryChips, Field, MoneyInput, Segmented } from '../ui/controls';
+import { AccountChips, CategoryChips, Field, MoneyInput, PropertyChips, Segmented } from '../ui/controls';
 
 export function TransactionSheet({ tx, preset, title, onSaved, onClose }: TxSheetOptions & { onClose: () => void }) {
-  const { activeAccounts, settings, upsert, remove, saveSettings, toast, data } = useApp();
+  const { activeAccounts, activeProperties, properties, settings, upsert, remove, saveSettings, toast, data } = useApp();
   const base = tx ?? preset ?? {};
   const [type, setType] = useState<TxType>(base.type ?? 'expense');
   const [amount, setAmount] = useState<number>(base.amount ? Math.abs(base.amount) : NaN);
@@ -22,6 +22,9 @@ export function TransactionSheet({ tx, preset, title, onSaved, onClose }: TxShee
   const [toAccountId, setToAccountId] = useState<string | null>(base.toAccountId ?? null);
   const [date, setDate] = useState(base.date ?? todayStr());
   const [note, setNote] = useState(base.note ?? '');
+  const [propertyId, setPropertyId] = useState<string | null>(base.propertyId ?? null);
+  // An archived home stays selectable on the movements that already use it.
+  const homes = propertyId && !activeProperties.some((p) => p.id === propertyId) ? [...activeProperties, ...properties.filter((p) => p.id === propertyId)] : activeProperties;
   const [error, setError] = useState('');
   const categorizer = useCategorizer();
   const kind = type === 'income' ? 'income' : 'expense';
@@ -41,7 +44,8 @@ export function TransactionSheet({ tx, preset, title, onSaved, onClose }: TxShee
     const fields: Partial<Transaction> = {
       type, amount: value, accountId, date, note: note.trim(), needsReview: false,
       toAccountId: type === 'transfer' ? toAccountId : null,
-      categoryId: type === 'income' || type === 'expense' ? effectiveCategory ?? null : null
+      categoryId: type === 'income' || type === 'expense' ? effectiveCategory ?? null : null,
+      propertyId: type === 'income' || type === 'expense' ? propertyId : null
     };
     const saved: Transaction = tx ? { ...tx, ...fields } : newTx({ ...(preset ?? {}), ...fields } as Transaction);
     upsert('transactions', [saved]);
@@ -97,6 +101,10 @@ export function TransactionSheet({ tx, preset, title, onSaved, onClose }: TxShee
         </>
       ) : (
         <div className="field"><span className="label">Cuenta</span><AccountChips accounts={activeAccounts} value={accountId} onChange={setAccountId} /></div>
+      )}
+
+      {(type === 'expense' || type === 'income') && homes.length > 0 && (
+        <div className="field"><span className="label">Vivienda</span><PropertyChips properties={homes} value={propertyId} onChange={setPropertyId} /></div>
       )}
 
       <Field label="Concepto (opcional)">

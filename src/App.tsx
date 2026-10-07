@@ -30,7 +30,9 @@ export default function App() {
 }
 
 function Root() {
-  const { phase, settings, errorMessage, signOut, reload, startLocal } = useApp();
+  const { phase, settings, errorMessage, signOut, reload, startLocal, storeKind, data } = useApp();
+  // A space just created (e.g. personal finances besides the shared household) is set up the first time it is opened.
+  const needsSetup = storeKind === 'cloud' && !data.accounts.length && !data.categories.length;
   if (phase === 'loading') return <div className="auth"><div className="display muted" style={{ fontSize: 22 }}>Cuentas Personales</div></div>;
   if (phase === 'auth' || phase === 'recovery') return <AuthScreen />;
   if (phase === 'schema' || phase === 'error') {
@@ -51,7 +53,7 @@ function Root() {
       </div>
     );
   }
-  if (!settings.onboarded) return <Onboarding />;
+  if (!settings.onboarded || needsSetup) return <Onboarding key={settings.householdId ?? ''} />;
   return <Shell />;
 }
 

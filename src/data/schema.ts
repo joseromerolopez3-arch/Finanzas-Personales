@@ -7,16 +7,17 @@ export const TABLES: Record<CollectionName, { table: string; fields: string[] }>
   transactions: {
     table: 'transactions',
     fields: ['id', 'type', 'date', 'amount', 'accountId', 'toAccountId', 'categoryId', 'note', 'source', 'externalId',
-      'toExternalId', 'bankDescription', 'recurringId', 'createdBy', 'needsReview', 'createdAt']
+      'toExternalId', 'bankDescription', 'recurringId', 'propertyId', 'createdBy', 'needsReview', 'createdAt']
   },
   budgetYears: { table: 'budget_years', fields: ['id', 'year', 'mode'] },
-  budgetLines: { table: 'budget_lines', fields: ['id', 'year', 'kind', 'categoryId', 'pattern', 'base', 'amounts'] },
+  budgetLines: { table: 'budget_lines', fields: ['id', 'year', 'kind', 'categoryId', 'propertyId', 'pattern', 'base', 'amounts'] },
   recurring: {
     table: 'recurring',
-    fields: ['id', 'name', 'type', 'amount', 'categoryId', 'accountId', 'frequency', 'everyMonths', 'day', 'month', 'startDate', 'endDate', 'active']
+    fields: ['id', 'name', 'type', 'amount', 'categoryId', 'accountId', 'propertyId', 'frequency', 'everyMonths', 'day', 'month', 'startDate', 'endDate', 'active']
   },
   recurringLog: { table: 'recurring_log', fields: ['id', 'recurringId', 'period', 'status', 'transactionId', 'at'] },
   rules: { table: 'rules', fields: ['id', 'pattern', 'categoryId', 'kind'] },
+  properties: { table: 'properties', fields: ['id', 'name', 'icon', 'position', 'archived'] },
   settings: { table: 'settings', fields: ['id', 'householdId', 'name', 'startMonth', 'theme', 'onboarded', 'lastAccountId'] }
 };
 

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Account, Category, Transaction } from '../domain/types';
+import type { Account, Category, Property, Transaction } from '../domain/types';
 import { FALLBACK_ACCOUNT, FALLBACK_CATEGORY } from '../domain/defaults';
 import { makeCategorizer } from '../domain/categorize';
 import { useApp } from './app';
@@ -7,15 +7,18 @@ import { uid } from '../lib/id';
 import { todayStr } from '../lib/dates';
 
 export function useLookups() {
-  const { accounts, categories } = useApp();
+  const { accounts, categories, properties } = useApp();
   return useMemo(() => {
     const c = new Map(categories.map((x) => [x.id, x]));
     const a = new Map(accounts.map((x) => [x.id, x]));
+    const h = new Map(properties.map((x) => [x.id, x]));
     return {
       cat: (id: string | null | undefined): Category => c.get(id ?? '') ?? FALLBACK_CATEGORY,
-      acc: (id: string | null | undefined): Account => a.get(id ?? '') ?? FALLBACK_ACCOUNT
+      acc: (id: string | null | undefined): Account => a.get(id ?? '') ?? FALLBACK_ACCOUNT,
+      /** Home of a movement (null = General). */
+      home: (id: string | null | undefined): Property | null => h.get(id ?? '') ?? null
     };
-  }, [accounts, categories]);
+  }, [accounts, categories, properties]);
 }
 
 /** Name of whoever entered a movement, only when the household has several people. */
@@ -48,6 +51,6 @@ export function useSortedCategories(kind: 'income' | 'expense') {
 export function newTx(p: Partial<Transaction> & Pick<Transaction, 'type' | 'amount' | 'accountId'>): Transaction {
   return {
     id: uid(), date: todayStr(), toAccountId: null, categoryId: null, note: '', source: 'manual', externalId: null,
-    toExternalId: null, bankDescription: null, recurringId: null, createdBy: null, needsReview: false, createdAt: new Date().toISOString(), ...p
+    toExternalId: null, bankDescription: null, recurringId: null, propertyId: null, createdBy: null, needsReview: false, createdAt: new Date().toISOString(), ...p
   };
 }

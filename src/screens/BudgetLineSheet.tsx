@@ -15,12 +15,13 @@ const PATTERNS: { value: BudgetPattern; label: string; help: string }[] = [
   { value: 'custom', label: 'Mes a mes', help: 'Un importe distinto para cada mes.' }
 ];
 
-export function BudgetLineSheet({ year, kind, categoryId, onClose }: {
-  year: number; kind: Kind | 'savings'; categoryId: string | null; onClose: () => void;
+export function BudgetLineSheet({ year, kind, categoryId, propertyId = null, onClose }: {
+  year: number; kind: Kind | 'savings'; categoryId: string | null; propertyId?: string | null; onClose: () => void;
 }) {
   const { data, upsert, remove } = useApp();
-  const { cat } = useLookups();
-  const id = lineId(year, kind, categoryId);
+  const { cat, home } = useLookups();
+  const scope = kind === 'savings' ? null : propertyId;
+  const id = lineId(year, kind, categoryId, scope);
   const line = data.budgetLines.find((l) => l.id === id);
   const [pattern, setPattern] = useState<BudgetPattern>(line?.pattern ?? 'monthly');
   const [base, setBase] = useState<number>(line?.base ?? NaN);
@@ -45,14 +46,15 @@ export function BudgetLineSheet({ year, kind, categoryId, onClose }: {
   };
 
   const save = () => {
-    const l: BudgetLine = { id, year, kind, categoryId, pattern, base: pattern === 'custom' ? 0 : isNaN(base) ? 0 : base, amounts };
+    const l: BudgetLine = { id, year, kind, categoryId, propertyId: scope, pattern, base: pattern === 'custom' ? 0 : isNaN(base) ? 0 : base, amounts };
     if (!amounts.some(Boolean)) remove('budgetLines', [id]);
     else upsert('budgetLines', [l]);
     onClose();
   };
 
   const c = categoryId ? cat(categoryId) : null;
-  const title = kind === 'savings' ? `Objetivo de ahorro ${year}` : `${c?.icon} ${c?.name} · ${year}`;
+  const h = home(scope);
+  const title = kind === 'savings' ? `Objetivo de ahorro ${year}` : `${c?.icon} ${c?.name}${h ? ` · ${h.name}` : ''} · ${year}`;
   const verb = kind === 'savings' ? 'ahorrar' : kind === 'income' ? 'ingresar' : 'gastar';
 
   return (

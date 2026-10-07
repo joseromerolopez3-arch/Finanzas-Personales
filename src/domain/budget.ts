@@ -37,6 +37,13 @@ export const activeMonths = (l: Pick<BudgetLine, 'amounts'>) =>
 export const lineTotal = (l: Pick<BudgetLine, 'amounts'>, from = 0, to = 11) =>
   round2(l.amounts.slice(from, to + 1).reduce((s, v) => s + (v || 0), 0));
 
+/**
+ * Which part of the budget to look at when the household has several homes:
+ * 'all' = everything, null = General (not tied to a home), or a property id.
+ */
+export type Scope = 'all' | string | null;
+export const inScope = (row: { propertyId?: string | null }, scope: Scope) => scope === 'all' || (row.propertyId ?? null) === scope;
+
 export function modeOf(years: BudgetYear[], year: number): BudgetMode | null {
   return years.find((y) => y.year === year)?.mode ?? null;
 }
@@ -51,8 +58,8 @@ export interface BudgetFigures {
   hasBudget: boolean;
 }
 
-/** Budget for a range of months (inclusive, 0-based) of a year. */
-export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number, from: number, to: number): BudgetFigures {
+/** Budget for a range of months (inclusive, 0-based) of a year. The savings target is global (it ignores `scope`). */
+export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number, from: number, to: number, scope: Scope = 'all'): BudgetFigures {
   const mode = modeOf(years, year);
   const out: BudgetFigures = { mode, income: 0, expense: 0, savings: 0, byCategory: new Map(), hasBudget: false };
   if (!mode) return out;
@@ -64,7 +71,7 @@ export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number
     return out;
   }
   for (const l of ofYear) {
-    if (l.kind === 'savings' || !l.categoryId) continue;
+    if (l.kind === 'savings' || !l.categoryId || !inScope(l, scope)) continue;
     const v = lineTotal(l, from, to);
     if (l.kind === 'income') out.income += v; else out.expense += v;
     out.byCategory.set(l.categoryId, round2((out.byCategory.get(l.categoryId) || 0) + v));
@@ -125,8 +132,8 @@ export function compareCategories(
  * Proposes a budget from a previous year's actual figures: the monthly average per category,
  * rounded up to 5 €. Categories with irregular spending (less than 4 months) become an annual total.
  */
-export function proposeFromHistory(txs: Transaction[], fromYear: number, toYear: number, categories: Category[]): BudgetLine[] {
-  const ofYear = txs.filter((t) => inYear(t, fromYear));
+export function proposeFromHistory(txs: Transaction[], fromYear: number, toYear: number, categories: Category[], propertyId: string | null = null): BudgetLine[] {
+  const ofYear = txs.filter((t) => inYear(t, fromYear) && inScope(t, propertyId));
   const out: BudgetLine[] = [];
   for (const c of categories) {
     if (c.archived) continue;
@@ -139,12 +146,12 @@ export function proposeFromHistory(txs: Transaction[], fromYear: number, toYear:
     const base = regular ? Math.ceil(total / 12 / 5) * 5 : Math.ceil(total / 5) * 5;
     const pattern: BudgetPattern = regular ? 'monthly' : 'annual';
     out.push({
-      id: `${toYear}:${c.id}`, year: toYear, kind: c.kind, categoryId: c.id, pattern, base,
+      id: lineId(toYear, c.kind, c.id, propertyId), year: toYear, kind: c.kind, categoryId: c.id, propertyId, pattern, base,
       amounts: buildAmounts(pattern, base)
     });
   }
   return out;
 }
 
-export const lineId = (year: number, kind: BudgetLine['kind'], categoryId: string | null) =>
-  kind === 'savings' ? `${year}:savings` : `${year}:${categoryId}`;
+export const lineId = (year: number, kind: BudgetLine['kind'], categoryId: string | null, propertyId: string | null = null) =>
+  kind === 'savings' ? `${year}:savings` : propertyId ? `${year}:${propertyId}:${categoryId}` : `${year}:${categoryId}`;

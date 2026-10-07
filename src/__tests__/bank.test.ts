@@ -8,7 +8,7 @@ import type { Account, Transaction } from '../domain/types';
 
 const tx = (p: Partial<Transaction>): Transaction => ({
   id: Math.random().toString(36).slice(2), type: 'expense', date: '2026-09-10', amount: 10, accountId: 'a', toAccountId: null,
-  categoryId: null, note: '', source: 'manual', externalId: null, toExternalId: null, bankDescription: null, recurringId: null,
+  categoryId: null, note: '', source: 'manual', externalId: null, toExternalId: null, bankDescription: null, recurringId: null, propertyId: null,
   createdBy: null, needsReview: false, createdAt: '', ...p
 });
 const eb = (p: Partial<EBTransaction> & { amount: string; ind: 'CRDT' | 'DBIT'; date: string }): EBTransaction => ({
@@ -39,7 +39,7 @@ describe('planBankSync', () => {
     const manual = tx({ id: 'm1', amount: 45.2, date: '2026-09-09', note: 'Mercadona', accountId: 'a' });
     const history = tx({ id: 'h1', amount: 12.99, date: '2026-08-15', accountId: 'a', categoryId: 'subs', bankDescription: 'NETFLIX.COM', externalId: 'old' });
     const hipoteca = {
-      id: 'r1', name: 'Hipoteca', type: 'expense' as const, amount: 700, categoryId: null, accountId: null, frequency: 'monthly' as const,
+      id: 'r1', name: 'Hipoteca', type: 'expense' as const, amount: 700, categoryId: null, accountId: null, propertyId: null, frequency: 'monthly' as const,
       everyMonths: 1, day: 1, month: null, startDate: '2026-09-01', endDate: null, active: true
     };
     const plan = planBankSync([

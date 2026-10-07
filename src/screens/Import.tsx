@@ -5,7 +5,7 @@ import { useApp } from '../state/app';
 import { newTx, useCategorizer, useLookups } from '../state/hooks';
 import { balanceGap, reconcile, type ReviewRow } from '../domain/reconcile';
 import { prettify } from '../domain/text';
-import { matchRecurring, pending } from '../domain/recurring';
+import { inheritFromRecurring, matchRecurring, pending } from '../domain/recurring';
 import { loadFile, tableToStatement, type LoadedFile } from '../import';
 import { applyMapping } from '../import/table';
 import { shortDate, todayStr } from '../lib/dates';
@@ -98,15 +98,16 @@ export function ImportSheet({ accountId: initialAccount, onClose }: { accountId:
   }, [statement, account, data.transactions, built]);
 
   const confirm = () => {
-    const { created, updated } = built;
-    const all = [...created, ...updated];
+    const { updated } = built;
+    // Mark scheduled payments/incomes that this statement already covers (new movements take their home and category).
+    const logs = matchRecurring(pending(data.recurring, data.recurringLog, todayStr()), [...built.created, ...updated], new Date().toISOString());
+    const inherited = new Map(inheritFromRecurring(built.created, logs, data.recurring).map((t) => [t.id, t]));
+    const created = built.created.map((t) => inherited.get(t.id) ?? t);
     const extra = adjust && gap && gap.diff !== 0
       ? [newTx({ type: 'adjustment', amount: gap.diff, accountId, date: gap.date, note: 'Ajuste para cuadrar con el banco' })]
       : [];
     upsert('transactions', [...created, ...extra, ...updated]);
     if (loaded?.kind === 'table' && mapping && account) upsert('accounts', [{ ...account, importMapping: mapping }]);
-    // Mark scheduled payments/incomes that this statement already covers.
-    const logs = matchRecurring(pending(data.recurring, data.recurringLog, todayStr()), all, new Date().toISOString());
     upsert('recurringLog', logs);
     setSummary({ created: created.length, matched: updated.length, recurring: logs.length });
     setStep('done');

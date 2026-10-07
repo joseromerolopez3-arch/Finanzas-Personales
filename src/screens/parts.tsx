@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Bell, CheckCircle2 } from 'lucide-react';
 import type { Kind, Transaction } from '../domain/types';
-import type { CategoryComparison } from '../domain/budget';
+import type { CategoryComparison, Scope } from '../domain/budget';
 import { byCategory, balanceOf } from '../domain/calc';
 import { pending, type Occurrence } from '../domain/recurring';
 import { useApp } from '../state/app';
@@ -46,7 +46,7 @@ export function useOccurrenceActions() {
       title: r.name,
       preset: {
         type: r.type, amount: r.amount ?? 0, categoryId: r.categoryId, note: r.name, date: o.dueDate > todayStr() ? todayStr() : o.dueDate,
-        accountId: r.accountId ?? settings.lastAccountId ?? activeAccounts[0]?.id, recurringId: r.id, source: 'recurring'
+        accountId: r.accountId ?? settings.lastAccountId ?? activeAccounts[0]?.id, recurringId: r.id, propertyId: r.propertyId ?? null, source: 'recurring'
       },
       onSaved: (tx) => log(o, 'done', tx.id)
     });
@@ -179,4 +179,15 @@ export function useKindToggle() {
 
 export function ReconciledMark() {
   return <CheckCircle2 size={13} style={{ verticalAlign: -2, color: 'var(--income)' }} aria-label="Conciliado con el banco" />;
+}
+
+/** Filter by home: all of them, General (not tied to a home) or one home. */
+export function ScopeChips({ value, onChange }: { value: Scope; onChange: (s: Scope) => void }) {
+  const { activeProperties } = useApp();
+  const options: [Scope, string][] = [['all', 'Todas'], [null, 'General'], ...activeProperties.map((p): [Scope, string] => [p.id, `${p.icon} ${p.name}`])];
+  return (
+    <div className="chips" style={{ marginTop: 12 }} role="group" aria-label="Vivienda">
+      {options.map(([v, l]) => <button key={String(v)} className={`chip${value === v ? ' on' : ''}`} onClick={() => onChange(v)}>{l}</button>)}
+    </div>
+  );
 }

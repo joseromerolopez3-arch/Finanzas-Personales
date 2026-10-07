@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ArrowRight, Inbox, Link2Off } from 'lucide-react';
 import { daysLeft } from '../data/bank';
 import { useToReview } from './Review';
+import { HouseholdSwitch } from './Usage';
 import { useApp } from '../state/app';
 import { useUI } from '../state/ui';
 import { inMonth, totals } from '../domain/calc';
@@ -13,7 +14,7 @@ import { MonthNav, Progress } from '../ui/controls';
 import { AccountsCard, BellButton, CompareList, KindToggle, OccurrenceRow, ShareList, SyncDot, useKindToggle, usePending } from './parts';
 
 export function HomeScreen() {
-  const { data, settings, categories, bank } = useApp();
+  const { data, settings, categories, bank, households } = useApp();
   const toReview = useToReview();
   const renew = bank.links.filter((l) => l.status === 'expired' || (daysLeft(l.validUntil) ?? 99) <= 7);
   const ui = useUI();
@@ -50,7 +51,7 @@ export function HomeScreen() {
       <div className="topbar">
         <div style={{ flex: 1 }}>
           <h1 className="display">{settings.name ? `Hola, ${settings.name}` : 'Resumen'}</h1>
-          <div className="sub">Lo que entra, lo que sale y lo que queda <SyncDot /></div>
+          <div className="sub">{households.length > 1 ? <HouseholdSwitch /> : 'Lo que entra, lo que sale y lo que queda'} <SyncDot /></div>
         </div>
         <BellButton />
       </div>

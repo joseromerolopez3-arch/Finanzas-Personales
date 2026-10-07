@@ -1,7 +1,7 @@
 import type { BankRow, Kind, Recurring, RecurringLog, Rule, Transaction } from './types';
 import { makeCategorizer } from './categorize';
 import { reconcile } from './reconcile';
-import { matchRecurring, pending } from './recurring';
+import { inheritFromRecurring, matchRecurring, pending } from './recurring';
 import { prettify } from './text';
 import { diffDays } from '../lib/dates';
 import { cents, round2 } from '../lib/format';
@@ -121,7 +121,7 @@ export function planBankSync(inputs: SyncInput[], data: SyncData, opts: { newId:
   const create: Transaction[] = [];
   const base = (row: BankRow) => ({
     date: row.date, note: prettify(row.description), bankDescription: row.description, source: 'bank' as const,
-    recurringId: null, createdBy: null, createdAt: opts.now
+    recurringId: null, propertyId: null, createdBy: null, createdAt: opts.now
   });
 
   // Same amount leaving one of your accounts and entering another one: a transfer, not income + expense.
@@ -155,5 +155,6 @@ export function planBankSync(inputs: SyncInput[], data: SyncData, opts: { newId:
   const update = [...updated.values()];
   const due = pending(data.recurring, data.recurringLog, opts.today);
   const logs = matchRecurring(due, [...create, ...update], opts.now);
-  return { create, update, logs, matched: update.length, transfers };
+  const inherited = new Map(inheritFromRecurring(create, logs, data.recurring).map((t) => [t.id, t]));
+  return { create: create.map((t) => inherited.get(t.id) ?? t), update, logs, matched: update.length, transfers };
 }

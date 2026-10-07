@@ -45,6 +45,8 @@ export interface Transaction {
   toExternalId: string | null;
   bankDescription: string | null;
   recurringId: string | null;
+  /** Home (cost centre) it belongs to; null = General. */
+  propertyId: string | null;
   /** Person who entered it (shared households). */
   createdBy: string | null;
   /** Created automatically from the bank and not confirmed yet. */
@@ -66,6 +68,8 @@ export interface BudgetLine {
   year: number;
   kind: Kind | 'savings';
   categoryId: string | null;
+  /** Home it is budgeted for; null = General. Savings targets are always General. */
+  propertyId: string | null;
   pattern: BudgetPattern;
   /** Amount typed by the person (per month, per year or per selected month, depending on pattern). */
   base: number;
@@ -82,6 +86,7 @@ export interface Recurring {
   amount: number | null;
   categoryId: string | null;
   accountId: string | null;
+  propertyId: string | null;
   frequency: Frequency;
   /** Every N months (monthly frequency only). */
   everyMonths: number;
@@ -101,6 +106,15 @@ export interface RecurringLog {
   status: 'done' | 'skipped';
   transactionId: string | null;
   at: string;
+}
+
+/** A home of the household, used as a cost centre (electricity, food… per home). */
+export interface Property {
+  id: string;
+  name: string;
+  icon: string;
+  position: number;
+  archived: boolean;
 }
 
 export interface Rule {
@@ -131,17 +145,20 @@ export interface Snapshot {
   recurring: Recurring[];
   recurringLog: RecurringLog[];
   rules: Rule[];
+  properties: Property[];
   settings: Settings[];
 }
 export type CollectionName = keyof Snapshot;
 
 export interface Member { userId: string; role: 'owner' | 'member'; email: string | null; name: string }
-export interface Household { id: string; name: string; members: Member[] }
+export type HouseholdKind = 'personal' | 'shared';
+export interface Household { id: string; name: string; kind: HouseholdKind; members: Member[] }
+export interface HouseholdRef { id: string; name: string; kind: HouseholdKind }
 export type Row<C extends CollectionName> = Snapshot[C][number];
 
 export const EMPTY_SNAPSHOT: Snapshot = {
   accounts: [], categories: [], transactions: [], budgetYears: [], budgetLines: [],
-  recurring: [], recurringLog: [], rules: [], settings: []
+  recurring: [], recurringLog: [], rules: [], properties: [], settings: []
 };
 
 // ---------- import ----------

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import type { Account, Category, CollectionName, Household, Row, Settings, Snapshot, Transaction } from '../domain/types';
+import type { Account, Category, CollectionName, Household, HouseholdRef, Property, Row, Settings, Snapshot, Transaction } from '../domain/types';
 import { EMPTY_SNAPSHOT } from '../domain/types';
 import { defaultSettings } from '../domain/defaults';
 import { COLLECTIONS } from '../data/schema';
@@ -23,10 +23,13 @@ interface AppCtx {
   userId: string | null;
   /** Shared household (cloud only) and the store to manage it. */
   household: Household | null;
+  /** Every household the person belongs to (personal and/or shared). */
+  households: HouseholdRef[];
   cloud: CloudStore | null;
   refreshHousehold: () => Promise<void>;
   /** Reloads everything after joining or leaving a household. */
   restart: () => Promise<void>;
+  switchHousehold: (id: string) => Promise<void>;
   /** Bank connections of the household (cloud only). */
   bank: BankState;
   refreshBank: () => Promise<void>;
@@ -35,6 +38,9 @@ interface AppCtx {
   accounts: Account[];
   activeAccounts: Account[];
   categories: Category[];
+  /** Homes of the household (cost centres), in order; `activeProperties` without archived ones. */
+  properties: Property[];
+  activeProperties: Property[];
   sync: { state: SyncState; message?: string };
   upsert: <C extends CollectionName>(col: C, rows: Row<C>[]) => void;
   remove: (col: CollectionName, ids: string[]) => void;
@@ -61,8 +67,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const storeRef = useRef<Store | null>(null);
   const lastLoad = useRef(0);
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
   const [storeKind, setStoreKind] = useState<'local' | 'cloud' | null>(null);
   const [household, setHousehold] = useState<Household | null>(null);
+  const [households, setHouseholds] = useState<HouseholdRef[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [bank, setBank] = useState<BankState>({ links: [], accounts: [] });
 
@@ -80,7 +89,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshHousehold = useCallback(async () => {
     const s = storeRef.current;
-    if (s instanceof CloudStore) setHousehold(await s.household().catch(() => null));
+    if (!(s instanceof CloudStore)) return;
+    const [h, list] = await Promise.all([s.household().catch(() => null), s.myHouseholds().catch(() => [])]);
+    setHousehold(h);
+    setHouseholds(list);
   }, []);
 
   const toast = useCallback((message: string, action?: Toast['action']) => {
@@ -104,10 +116,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setData(snap);
       if (store instanceof CloudStore) {
         store.subscribe(onRemote, () => void refreshBank());
-        setHousehold(await store.household().catch(() => null));
+        const [h, list] = await Promise.all([store.household().catch(() => null), store.myHouseholds().catch(() => [])]);
+        setHousehold(h);
+        setHouseholds(list);
         void refreshBank();
       } else {
         setBank({ links: [], accounts: [] });
+        setHouseholds([]);
       }
       // A password-recovery link signs in too: keep the "new password" screen on top.
       setPhase((p) => (p === 'recovery' ? p : 'ready'));
@@ -172,6 +187,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (s) await attach(s);
   }, [attach]);
 
+  const switchHousehold = useCallback(async (id: string) => {
+    const s = storeRef.current;
+    if (!(s instanceof CloudStore) || id === s.householdId) return;
+    const current = dataRef.current.settings[0] ?? defaultSettings();
+    await s.upsert('settings', [{ ...current, id: 'me', householdId: id }]);
+    await attach(s);
+  }, [attach]);
+
   const upsert = useCallback(<C extends CollectionName>(col: C, input: Row<C>[]) => {
     if (!input.length) return;
     let rows = input;
@@ -198,9 +221,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     upsert('settings', [{ ...settings, ...patch, id: 'me' }]);
   }, [settings, upsert]);
 
-  const dataRef = useRef(data);
-  useEffect(() => { dataRef.current = data; }, [data]);
-
   /** Replaces every collection (restoring a backup). */
   const replaceAll = useCallback((snap: Snapshot) => {
     const current = dataRef.current;
@@ -217,6 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     safeStorage()?.removeItem(MODE_KEY);
     if (storeRef.current instanceof CloudStore) storeRef.current.close();
     setHousehold(null);
+    setHouseholds([]);
     if (storeRef.current?.kind === 'cloud' && supabase) await supabase.auth.signOut();
     storeRef.current = null;
     setData(EMPTY_SNAPSHOT);
@@ -234,10 +255,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const accounts = useMemo(() => [...data.accounts].sort((a, b) => a.position - b.position), [data.accounts]);
   const activeAccounts = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
   const categories = useMemo(() => [...data.categories].sort((a, b) => a.position - b.position), [data.categories]);
+  const properties = useMemo(() => [...data.properties].sort((a, b) => a.position - b.position), [data.properties]);
+  const activeProperties = useMemo(() => properties.filter((p) => !p.archived), [properties]);
 
   const value: AppCtx = {
-    phase, errorMessage, storeKind, email, userId, household, cloud: storeRef.current instanceof CloudStore ? storeRef.current : null,
-    refreshHousehold, restart, bank, refreshBank, data, settings, accounts, activeAccounts, categories, sync,
+    phase, errorMessage, storeKind, email, userId, household, households, switchHousehold, cloud: storeRef.current instanceof CloudStore ? storeRef.current : null,
+    refreshHousehold, restart, bank, refreshBank, data, settings, accounts, activeAccounts, categories, properties, activeProperties, sync,
     upsert, remove, saveSettings, replaceAll, startLocal, signOut, reload, toast, toasts, dismissToast, setPhase
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
