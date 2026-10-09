@@ -153,7 +153,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (safeStorage()?.getItem(MODE_KEY) === 'local') { startLocal(); return; }
     let started = false;
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) { started = true; void startCloud(session); } else setPhase('auth');
+      if (session) { if (!started) { started = true; void startCloud(session); } } else if (!started) setPhase('auth');
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setPhase('recovery');

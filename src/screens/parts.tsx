@@ -102,6 +102,14 @@ export function AccountsCard() {
 
 const STATUS_TEXT = { ok: 'En línea', warn: 'Cerca del límite', over: 'Superado', none: 'Sin presupuesto' } as const;
 
+/** Real vs budget of the same period, as a difference (not as an amount still to spend). */
+export function budgetDiffText(kind: Kind, actual: number, budget: number): string {
+  const d = round2(actual - budget);
+  if (Math.abs(d) < 0.005) return kind === 'expense' ? 'Igual que lo presupuestado' : 'Igual que lo previsto';
+  if (kind === 'expense') return d > 0 ? `${eur(d)} por encima del presupuesto` : `${eur(-d)} por debajo del presupuesto`;
+  return d > 0 ? `${eur(d)} más de lo previsto` : `${eur(-d)} menos de lo previsto`;
+}
+
 /** Category by category, actual vs budget (budget by categories). */
 export function CompareList({ rows, kind, onPick }: { rows: CategoryComparison[]; kind: Kind; onPick?: (categoryId: string) => void }) {
   const { cat } = useLookups();
@@ -110,11 +118,7 @@ export function CompareList({ rows, kind, onPick }: { rows: CategoryComparison[]
     <div>
       {rows.map((r) => {
         const c = cat(r.categoryId);
-        const text = r.budget
-          ? kind === 'expense'
-            ? r.remaining >= 0 ? `Quedan ${eur(r.remaining)}` : `Te has pasado ${eur(-r.remaining)}`
-            : r.remaining > 0 ? `Faltan ${eur(r.remaining)}` : `Superado en ${eur(-r.remaining)}`
-          : 'Sin presupuesto';
+        const text = r.budget ? budgetDiffText(kind, r.actual, r.budget) : 'Sin presupuesto';
         const status = kind === 'income' && r.status === 'over' ? 'warn' : r.status;
         const Row = onPick ? 'button' : 'div';
         return (

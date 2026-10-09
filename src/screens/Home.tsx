@@ -69,7 +69,7 @@ export function HomeScreen() {
             </div>
             <div style={{ marginTop: 10 }}><Progress value={Math.max(0, t.savings)} max={target} status={status} marker={isCurrent ? elapsed : undefined} /></div>
             <div className="bar-meta">
-              <span>{t.savings >= target ? '¡Objetivo cumplido!' : `Faltan ${eur(target - t.savings)}`}</span>
+              <span>{t.savings >= target ? `${eur(t.savings - target)} por encima de lo presupuestado` : `${eur(target - t.savings)} por debajo de lo presupuestado`}</span>
               {forecast && <span>Previsión fin de mes: {eur(forecast.savings)}</span>}
             </div>
           </>
