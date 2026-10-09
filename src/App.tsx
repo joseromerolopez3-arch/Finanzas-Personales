@@ -60,8 +60,8 @@ function Root() {
 const TABS: { id: Tab; label: string; icon: typeof Home; hash: string }[] = [
   { id: 'home', label: 'Resumen', icon: Home, hash: '' },
   { id: 'movements', label: 'Movimientos', icon: List, hash: 'movimientos' },
-  { id: 'budget', label: 'Presupuesto', icon: PiggyBank, hash: 'presupuesto' },
   { id: 'reports', label: 'Informes', icon: BarChart3, hash: 'informes' },
+  { id: 'budget', label: 'Presupuesto', icon: PiggyBank, hash: 'presupuesto' },
   { id: 'settings', label: 'Ajustes', icon: Cog, hash: 'ajustes' }
 ];
 const tabFromHash = (): Tab => TABS.find((t) => t.hash && `#${t.hash}` === location.hash)?.id ?? 'home';
