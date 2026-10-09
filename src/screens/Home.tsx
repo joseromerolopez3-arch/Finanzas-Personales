@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight, Inbox, Link2Off } from 'lucide-react';
 import { daysLeft } from '../data/bank';
 import { useToReview } from './Review';
@@ -6,15 +6,16 @@ import { HouseholdSwitch } from './Usage';
 import { useApp } from '../state/app';
 import { useUI } from '../state/ui';
 import { inMonth, totals } from '../domain/calc';
-import { budgetFor, compareCategories } from '../domain/budget';
+import { budgetFor, compareCategories, inScope, type Scope } from '../domain/budget';
+import { CategoryMovementsSheet } from './CategoryMovements';
 import { upcoming } from '../domain/recurring';
 import { daysInMonth, makeDate, monthKey, MONTHS_LONG, todayStr } from '../lib/dates';
 import { eur, round2 } from '../lib/format';
 import { MonthNav, Progress } from '../ui/controls';
-import { AccountsCard, BellButton, CategoryTable, KindToggle, OccurrenceRow, SyncDot, useKindToggle, usePending } from './parts';
+import { AccountsCard, BellButton, CategoryTable, KindToggle, OccurrenceRow, ScopeChips, SyncDot, useKindToggle, usePending } from './parts';
 
 export function HomeScreen() {
-  const { data, settings, categories, bank, households } = useApp();
+  const { data, settings, categories, bank, households, activeProperties } = useApp();
   const toReview = useToReview();
   const renew = bank.links.filter((l) => l.status === 'expired' || (daysLeft(l.validUntil) ?? 99) <= 7);
   const ui = useUI();
@@ -27,7 +28,15 @@ export function HomeScreen() {
   const txs = useMemo(() => data.transactions.filter((t) => inMonth(t, y, m0)), [data.transactions, y, m0]);
   const t = totals(txs);
   const budget = budgetFor(data.budgetYears, data.budgetLines, y, m0, m0);
-  const comparison = budget.mode === 'category' ? compareCategories(txs, budget, categories, kind, elapsed) : [];
+  // Category detail, optionally for one home; the budget by categories is compared whatever the year's mode.
+  const [pickedScope, setScope] = useState<Scope>('all');
+  const homes = activeProperties.length > 0;
+  const scope: Scope = homes && (pickedScope === null || activeProperties.some((p) => p.id === pickedScope)) ? pickedScope : 'all';
+  const scopedTxs = useMemo(() => txs.filter((x) => inScope(x, scope)), [txs, scope]);
+  const scopedBudget = budgetFor(data.budgetYears, data.budgetLines, y, m0, m0, scope);
+  const hasCatBudget = budget.byCategory.size > 0;
+  const comparison = hasCatBudget ? compareCategories(scopedTxs, scopedBudget, categories, kind, elapsed) : null;
+  const [picked, setPicked] = useState<string | null>(null);
   const pendingList = usePending();
 
   // Expected until month end: scheduled items with an amount not registered yet.
@@ -80,12 +89,12 @@ export function HomeScreen() {
           <div className="pill">
             <div className="l">Ingresos</div>
             <div className="v num">{eur(t.income)}</div>
-            {budget.mode === 'category' && budget.income > 0 && <div className="l">de {eur(budget.income)}</div>}
+            {hasCatBudget && budget.income > 0 && <div className="l">de {eur(budget.income)}</div>}
           </div>
           <div className="pill">
             <div className="l">Gastos</div>
             <div className="v num">{eur(t.expense)}</div>
-            {budget.mode === 'category' && budget.expense > 0 && <div className="l">de {eur(budget.expense)}</div>}
+            {hasCatBudget && budget.expense > 0 && <div className="l">de {eur(budget.expense)}</div>}
           </div>
         </div>
       </div>
@@ -139,15 +148,20 @@ export function HomeScreen() {
       <AccountsCard />
 
       <div className="section-head">
-        <h2>{budget.mode === 'category' ? 'Categorías frente a presupuesto' : 'Por categoría'}</h2>
+        <h2>{hasCatBudget ? 'Categorías frente a presupuesto' : 'Por categoría'}</h2>
         <button className="link" onClick={() => ui.goTab('movements')}>Movimientos</button>
       </div>
+      {homes && <div style={{ marginBottom: 10 }}><ScopeChips value={scope} onChange={setScope} /></div>}
       <div className="card">
         <KindToggle value={kind} onChange={setKind} />
         <div style={{ marginTop: 6 }}>
-          <CategoryTable rows={budget.mode === 'category' ? comparison : null} txs={txs} kind={kind} />
+          <CategoryTable rows={comparison} txs={scopedTxs} kind={kind} onPick={setPicked} />
         </div>
       </div>
+      {picked !== null && (
+        <CategoryMovementsSheet categoryId={picked} kind={kind} txs={scopedTxs} onClose={() => setPicked(null)}
+          period={`${MONTHS_LONG[m0]} ${y}${scope === 'all' ? '' : ` · ${scope === null ? 'General' : activeProperties.find((p) => p.id === scope)?.name ?? ''}`}`} />
+      )}
     </>
   );
 }
