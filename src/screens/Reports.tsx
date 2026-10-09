@@ -4,113 +4,144 @@ import { useApp } from '../state/app';
 import { useLookups } from '../state/hooks';
 import { useUI } from '../state/ui';
 import { budgetFor, compareCategories, inScope, monthlySavingsBudget, type Scope } from '../domain/budget';
-import { inYear, netWorth, sumTotals, yearTotals } from '../domain/calc';
-import { makeDate, MONTHS_LONG, MONTHS_SHORT, todayStr } from '../lib/dates';
+import { inMonthRange, sumTotals, yearTotals } from '../domain/calc';
+import { MONTHS_LONG, MONTHS_SHORT, todayStr } from '../lib/dates';
 import { eur } from '../lib/format';
-import { YearNav } from '../ui/controls';
-import { LineChart } from '../ui/charts';
+import { Segmented, YearNav } from '../ui/controls';
 import { CompareList, KindToggle, ScopeChips, ShareList, useKindToggle } from './parts';
 import { downloadCSV } from './backup';
 
+type PeriodMode = 'month' | 'range' | 'year';
+
 export function ReportsScreen() {
-  const { data, activeAccounts, categories, properties, activeProperties } = useApp();
+  const { data, categories, properties, activeProperties } = useApp();
   const ui = useUI();
   const lookups = useLookups();
-  const [year, setYear] = useState(ui.period.y);
-  const [kind, setKind] = useKindToggle();
   const today = todayStr();
   const curY = Number(today.slice(0, 4)), curM = Number(today.slice(5, 7)) - 1;
+  const [year, setYear] = useState(ui.period.y);
+  const [kind, setKind] = useKindToggle();
+  // Period: one month, a run of months (e.g. January–March) or the whole year.
+  const [mode, setMode] = useState<PeriodMode>(year === curY ? 'range' : 'year');
+  const [from, setFrom] = useState(0);
+  const [to, setTo] = useState(year === curY ? curM : 11);
+  const [month, setMonth] = useState(year === curY ? curM : 0);
+  const [f, t] = mode === 'year' ? [0, 11] : mode === 'month' ? [month, month] : [from, to];
   const lastMonth = year < curY ? 11 : year > curY ? -1 : curM;
+  const label = f === 0 && t === 11 ? `todo ${year}` : f === t ? `${MONTHS_LONG[f]} ${year}` : `${MONTHS_LONG[f]} – ${MONTHS_LONG[t]} ${year}`;
+
+  const changeYear = (y: number) => {
+    setYear(y);
+    if (y === curY) { setTo(curM); setMonth(curM); } else { setTo(11); setMonth(0); }
+    setFrom(0);
+  };
 
   const months = useMemo(() => yearTotals(data.transactions, year), [data.transactions, year]);
-  const total = sumTotals(months);
+  const inPeriod = months.map((m, i) => ({ ...m, i })).slice(f, t + 1);
+  const total = sumTotals(inPeriod);
   const targets = monthlySavingsBudget(data.budgetYears, data.budgetLines, year);
-  const hasTargets = targets.some(Boolean);
-  const budget = budgetFor(data.budgetYears, data.budgetLines, year, 0, 11);
-  const txsYear = useMemo(() => data.transactions.filter((t) => inYear(t, year)), [data.transactions, year]);
+  const hasTargets = targets.slice(f, t + 1).some(Boolean);
+  // Target of the months that already have movements, so the deviation compares like with like.
+  const elapsedTarget = inPeriod.reduce((s, m) => s + (m.income || m.expense ? targets[m.i] : 0), 0);
+  const txs = useMemo(() => data.transactions.filter((x) => inMonthRange(x, year, f, t)), [data.transactions, year, f, t]);
   const rate = total.income > 0 ? Math.round((total.savings / total.income) * 100) : null;
-  // Months before the app started tracking (earliest opening date or movement) are left blank.
-  const worth = useMemo(() => {
-    const start = [...activeAccounts.map((a) => a.openingDate), ...data.transactions.map((t) => t.date)].sort()[0] ?? today;
-    return MONTHS_SHORT.map((_, m) => {
-      const end = makeDate(year, m, 31);
-      return m <= lastMonth && end >= start ? netWorth(activeAccounts, data.transactions, end) : null;
-    });
-  }, [activeAccounts, data.transactions, year, lastMonth, today]);
-  const monthsElapsed = Math.max(1, lastMonth + 1);
-  // Target of the months that already have movements, so the yearly deviation compares like with like.
-  const elapsedTarget = months.reduce((s, m, i) => s + (m.income || m.expense ? targets[i] : 0), 0);
+  // Months of the period already lived (for monthly averages and how far incomes should be).
+  const livedTo = Math.min(t, lastMonth);
+  const lived = Math.max(0, livedTo - f + 1);
+  const elapsed = lived / (t - f + 1);
 
-  // Homes (cost centres): totals of the year per home and the category detail of the chosen one.
+  // Homes (cost centres): totals per home and the category detail of the chosen one.
   const [pickedScope, setScope] = useState<Scope>('all');
   const homes = activeProperties.length > 0;
   const scope: Scope = homes && (pickedScope === null || activeProperties.some((p) => p.id === pickedScope)) ? pickedScope : 'all';
-  const scopedTxs = useMemo(() => txsYear.filter((t) => inScope(t, scope)), [txsYear, scope]);
-  const scopedBudget = budgetFor(data.budgetYears, data.budgetLines, year, 0, 11, scope);
+  const scopedTxs = useMemo(() => txs.filter((x) => inScope(x, scope)), [txs, scope]);
+  const scopedBudget = budgetFor(data.budgetYears, data.budgetLines, year, f, t, scope);
   const perHome = useMemo(() => {
     if (!homes) return [];
-    const list = [{ id: null as string | null, name: 'General', icon: '📋' }, ...properties.filter((p) => !p.archived || txsYear.some((t) => t.propertyId === p.id))];
+    const list = [{ id: null as string | null, name: 'General', icon: '📋' }, ...properties.filter((p) => !p.archived || txs.some((x) => x.propertyId === p.id))];
     return list.map((h) => {
-      const tx = txsYear.filter((t) => inScope(t, h.id));
-      // Same months as the actual figures (the whole year for a year that has not started yet).
-      const b = budgetFor(data.budgetYears, data.budgetLines, year, 0, lastMonth < 0 ? 11 : lastMonth, h.id);
-      const sum = (k: string) => tx.filter((t) => t.type === k).reduce((s, t) => s + t.amount, 0);
+      const tx = txs.filter((x) => inScope(x, h.id));
+      const b = budgetFor(data.budgetYears, data.budgetLines, year, f, t, h.id);
+      const sum = (k: string) => tx.filter((x) => x.type === k).reduce((s, x) => s + x.amount, 0);
       return { ...h, expense: sum('expense'), income: sum('income'), budget: b.mode === 'category' ? b.expense : null };
     });
-  }, [homes, properties, txsYear, data.budgetYears, data.budgetLines, year, lastMonth]);
+  }, [homes, properties, txs, data.budgetYears, data.budgetLines, year, f, t]);
+
+  const monthOptions = MONTHS_LONG.map((m, i) => <option key={m} value={i}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>);
 
   return (
     <>
       <div className="topbar">
         <h1 className="display" style={{ flex: 1 }}>Informes</h1>
-        <button className="icon-btn" title="Descargar movimientos del año (CSV)" aria-label="Descargar movimientos del año (CSV)"
-          onClick={() => downloadCSV(txsYear, lookups, `movimientos-${year}.csv`)}><Download size={18} /></button>
+        <button className="icon-btn" title="Descargar movimientos del periodo (CSV)" aria-label="Descargar movimientos del periodo (CSV)"
+          onClick={() => downloadCSV(txs, lookups, `movimientos-${year}-${f + 1}-${t + 1}.csv`)}><Download size={18} /></button>
       </div>
-      <YearNav year={year} onChange={setYear} />
+      <YearNav year={year} onChange={changeYear} />
 
-      <div className="hero">
-        <div className="hero-label">Ahorrado en {year}</div>
+      <Segmented value={mode} onChange={setMode}
+        options={[{ value: 'month', label: 'Un mes' }, { value: 'range', label: 'Varios meses' }, { value: 'year', label: 'Año entero' }]} />
+      {mode === 'month' && (
+        <div className="row-flex" style={{ marginTop: 10 }}>
+          <select className="input" value={month} onChange={(e) => setMonth(Number(e.target.value))} aria-label="Mes">{monthOptions}</select>
+        </div>
+      )}
+      {mode === 'range' && (
+        <div className="row-flex" style={{ marginTop: 10 }}>
+          <label style={{ flex: 1 }}><span className="small muted">Desde</span>
+            <select className="input" value={from} onChange={(e) => { const v = Number(e.target.value); setFrom(v); if (v > to) setTo(v); }}>{monthOptions}</select>
+          </label>
+          <label style={{ flex: 1 }}><span className="small muted">Hasta</span>
+            <select className="input" value={to} onChange={(e) => { const v = Number(e.target.value); setTo(v); if (v < from) setFrom(v); }}>{monthOptions}</select>
+          </label>
+        </div>
+      )}
+
+      <div className="hero" style={{ marginTop: 14 }}>
+        <div className="hero-label">Ahorrado · {label}</div>
         <div className="hero-amount display num">{eur(total.savings)}</div>
         <div className="hero-note">
-          {rate != null && `Tasa de ahorro ${rate} % de los ingresos`}
-          {hasTargets && ` · Objetivo del año ${eur(budget.savings)}`}
+          {[rate != null ? `Tasa de ahorro ${rate} % de los ingresos` : '', hasTargets ? `Objetivo ${eur(elapsedTarget)}` : ''].filter(Boolean).join(' · ')}
         </div>
         <div className="pills">
-          <div className="pill"><div className="l">Ingresos</div><div className="v num">{eur(total.income)}</div><div className="l">{eur(total.income / monthsElapsed)} / mes</div></div>
-          <div className="pill"><div className="l">Gastos</div><div className="v num">{eur(total.expense)}</div><div className="l">{eur(total.expense / monthsElapsed)} / mes</div></div>
+          <div className="pill"><div className="l">Ingresos</div><div className="v num">{eur(total.income)}</div>{lived > 1 && <div className="l">{eur(total.income / lived)} / mes</div>}</div>
+          <div className="pill"><div className="l">Gastos</div><div className="v num">{eur(total.expense)}</div>{lived > 1 && <div className="l">{eur(total.expense / lived)} / mes</div>}</div>
         </div>
       </div>
 
-      <div className="section-head"><h2>Mes a mes</h2><span className="small muted">ahorro</span></div>
-      <div className="card table-wrap" style={{ padding: '6px 10px' }}>
-        <table className="table">
-          <thead><tr><th>Mes</th><th>Real</th><th>Objetivo</th><th>Desviación</th></tr></thead>
-          <tbody>
-            {months.map((m, i) => {
-              const empty = !m.income && !m.expense;
-              const dev = !empty && targets[i] ? m.savings - targets[i] : null;
-              return (
-                <tr key={i} className={empty && !targets[i] ? 'dim' : ''}>
-                  <td>{MONTHS_SHORT[i]}</td>
-                  <td className={m.savings < 0 ? 'neg' : ''}>{empty ? '—' : eur(m.savings)}</td>
-                  <td>{targets[i] ? eur(targets[i]) : '—'}</td>
-                  <td className={dev == null ? '' : dev >= 0 ? 'pos' : 'neg'}>{dev == null ? '—' : `${dev > 0 ? '+' : ''}${eur(dev)}`}</td>
+      {t > f && (
+        <>
+          <div className="section-head"><h2>Mes a mes</h2><span className="small muted">ahorro</span></div>
+          <div className="card table-wrap" style={{ padding: '6px 10px' }}>
+            <table className="table">
+              <thead><tr><th>Mes</th><th>Real</th><th>Objetivo</th><th>Desviación</th></tr></thead>
+              <tbody>
+                {inPeriod.map((m) => {
+                  const empty = !m.income && !m.expense;
+                  const dev = !empty && targets[m.i] ? m.savings - targets[m.i] : null;
+                  return (
+                    <tr key={m.i} className={empty && !targets[m.i] ? 'dim' : ''}>
+                      <td>{MONTHS_SHORT[m.i]}</td>
+                      <td className={m.savings < 0 ? 'neg' : ''}>{empty ? '—' : eur(m.savings)}</td>
+                      <td>{targets[m.i] ? eur(targets[m.i]) : '—'}</td>
+                      <td className={dev == null ? '' : dev >= 0 ? 'pos' : 'neg'}>{dev == null ? '—' : `${dev > 0 ? '+' : ''}${eur(dev)}`}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="total">
+                  <td>Total</td><td>{eur(total.savings)}</td>
+                  <td>{hasTargets ? eur(elapsedTarget) : '—'}</td>
+                  <td className={hasTargets ? (total.savings >= elapsedTarget ? 'pos' : 'neg') : ''}>{hasTargets ? `${total.savings - elapsedTarget > 0 ? '+' : ''}${eur(total.savings - elapsedTarget)}` : '—'}</td>
                 </tr>
-              );
-            })}
-            <tr className="total">
-              <td>Total</td><td>{eur(total.savings)}</td>
-              <td>{hasTargets ? eur(elapsedTarget) : '—'}</td>
-              <td className={hasTargets ? (total.savings >= elapsedTarget ? 'pos' : 'neg') : ''}>{hasTargets ? `${total.savings - elapsedTarget > 0 ? '+' : ''}${eur(total.savings - elapsedTarget)}` : '—'}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {hasTargets && <p className="hint">Desviación = ahorro real − objetivo del mes; en positivo has ahorrado más de lo previsto. El total compara solo los meses con movimientos.</p>}
+              </tbody>
+            </table>
+          </div>
+          {hasTargets && <p className="hint">Desviación = ahorro real − objetivo del mes; en positivo has ahorrado más de lo previsto. El total compara solo los meses con movimientos.</p>}
+        </>
+      )}
 
       {homes && (
         <>
-          <div className="section-head"><h2>Por vivienda</h2><span className="small muted">{lastMonth >= 0 && lastMonth < 11 ? `enero – ${MONTHS_LONG[lastMonth]}` : year}</span></div>
+          <div className="section-head"><h2>Por vivienda</h2><span className="small muted">{label}</span></div>
           <div className="card table-wrap" style={{ padding: '6px 10px' }}>
             <table className="table">
               <thead><tr><th>Vivienda</th><th>Gastos</th>{perHome.some((h) => h.budget != null) && <th>Presup.</th>}<th>Ingresos</th></tr></thead>
@@ -129,21 +160,14 @@ export function ReportsScreen() {
         </>
       )}
 
-      <div className="section-head"><h2>Por categoría</h2><span className="small muted">{year}</span></div>
+      <div className="section-head"><h2>Por categoría</h2><span className="small muted">{label}</span></div>
       {homes && <div style={{ marginBottom: 10 }}><ScopeChips value={scope} onChange={setScope} /></div>}
       <div className="card">
         <KindToggle value={kind} onChange={setKind} />
         {scopedBudget.mode === 'category'
-          ? <CompareList rows={compareCategories(scopedTxs, scopedBudget, categories, kind, lastMonth < 0 ? 0 : (lastMonth + 1) / 12)} kind={kind} />
-          : <ShareList txs={scopedTxs} kind={kind} months={monthsElapsed} />}
+          ? <CompareList rows={compareCategories(scopedTxs, scopedBudget, categories, kind, elapsed)} kind={kind} />
+          : <ShareList txs={scopedTxs} kind={kind} months={Math.max(1, lived)} />}
       </div>
-
-      {worth.some((v) => v != null) && (
-        <>
-          <div className="section-head"><h2>Patrimonio a fin de mes</h2><span className="small muted">suma de tus cuentas</span></div>
-          <div className="card"><LineChart values={worth} labels={MONTHS_SHORT} /></div>
-        </>
-      )}
     </>
   );
 }
