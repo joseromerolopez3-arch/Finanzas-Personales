@@ -64,9 +64,14 @@ export function ReportsScreen() {
       const tx = txs.filter((x) => inScope(x, h.id));
       const b = budgetFor(data.budgetYears, data.budgetLines, year, f, t, h.id);
       const sum = (k: string) => tx.filter((x) => x.type === k).reduce((s, x) => s + x.amount, 0);
-      return { ...h, expense: sum('expense'), income: sum('income'), budget: b.byCategory.size ? b.expense : null };
+      return { ...h, actual: sum(kind), budget: b.byCategory.size ? (kind === 'expense' ? b.expense : b.income) : null };
     });
-  }, [homes, properties, txs, data.budgetYears, data.budgetLines, year, f, t]);
+  }, [homes, properties, txs, data.budgetYears, data.budgetLines, year, f, t, kind]);
+  const hasHomeBudget = perHome.some((h) => h.budget != null);
+  // Expenses: below budget is good. Incomes: above what was expected is good.
+  const homeDiff = (actual: number, budget: number) => Math.round((kind === 'expense' ? budget - actual : actual - budget) * 100) / 100;
+  const signed = (d: number) => `${d > 0 ? '+' : ''}${eur(d)}`;
+  const tone = (d: number) => (Math.abs(d) < 0.005 ? '' : d > 0 ? 'pos' : 'neg');
 
   const [picked, setPicked] = useState<string | null>(null);
   const monthOptions = MONTHS_LONG.map((m, i) => <option key={m} value={i}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>);
@@ -141,32 +146,38 @@ export function ReportsScreen() {
         </>
       )}
 
+      <div className="section-head"><h2>Gastos e ingresos</h2><span className="small muted">{label}</span></div>
+      <KindToggle value={kind} onChange={setKind} />
+
       {homes && (
         <>
-          <div className="section-head"><h2>Por vivienda</h2><span className="small muted">{label}</span></div>
+          <div className="section-head"><h2>Por vivienda</h2></div>
           <div className="card table-wrap" style={{ padding: '6px 10px' }}>
             <table className="table">
-              <thead><tr><th>Vivienda</th><th>Gastos</th>{perHome.some((h) => h.budget != null) && <th>Presup.</th>}<th>Ingresos</th></tr></thead>
+              <thead><tr><th>Vivienda</th><th>Real</th>{hasHomeBudget && <th>Presup.</th>}{hasHomeBudget && <th>Dif.</th>}</tr></thead>
               <tbody>
-                {perHome.map((h) => (
-                  <tr key={String(h.id)} onClick={() => setScope(h.id)} style={{ cursor: 'pointer' }} className={scope === h.id ? 'total' : ''}>
-                    <td style={{ textTransform: 'none' }}>{h.icon} {h.name}</td>
-                    <td>{eur(h.expense)}</td>
-                    {perHome.some((x) => x.budget != null) && <td className={h.budget != null && h.expense > h.budget ? 'neg' : ''}>{h.budget != null ? eur(h.budget) : '—'}</td>}
-                    <td>{h.income ? eur(h.income) : '—'}</td>
-                  </tr>
-                ))}
+                {perHome.map((h) => {
+                  const d = h.budget != null ? homeDiff(h.actual, h.budget) : 0;
+                  return (
+                    <tr key={String(h.id)} onClick={() => setScope(h.id)} style={{ cursor: 'pointer' }} className={scope === h.id ? 'total' : ''}>
+                      <td style={{ textTransform: 'none', whiteSpace: 'normal' }}>{h.icon} {h.name}</td>
+                      <td>{eur(h.actual)}</td>
+                      {hasHomeBudget && <td>{h.budget ? eur(h.budget) : '—'}</td>}
+                      {hasHomeBudget && <td className={h.budget ? tone(d) : ''}>{h.budget ? signed(d) : '—'}</td>}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          <p className="hint">Toca una vivienda para ver sus categorías.</p>
         </>
       )}
 
-      <div className="section-head"><h2>Por categoría</h2><span className="small muted">{label}</span></div>
+      <div className="section-head"><h2>Por categoría</h2></div>
       {homes && <div style={{ marginBottom: 10 }}><ScopeChips value={scope} onChange={setScope} /></div>}
       <div className="card">
-        <KindToggle value={kind} onChange={setKind} />
-        <div style={{ marginTop: 6 }}>
+        <div>
           <CategoryTable rows={scopedBudget.byCategory.size ? compareCategories(scopedTxs, scopedBudget, categories, kind, elapsed) : null} txs={scopedTxs} kind={kind} onPick={setPicked} />
         </div>
       </div>
