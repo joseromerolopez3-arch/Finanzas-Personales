@@ -11,7 +11,7 @@ import { upcoming } from '../domain/recurring';
 import { daysInMonth, makeDate, monthKey, MONTHS_LONG, todayStr } from '../lib/dates';
 import { eur, round2 } from '../lib/format';
 import { MonthNav, Progress } from '../ui/controls';
-import { AccountsCard, BellButton, CompareList, KindToggle, OccurrenceRow, ShareList, SyncDot, useKindToggle, usePending } from './parts';
+import { AccountsCard, BellButton, CategoryTable, KindToggle, OccurrenceRow, SyncDot, useKindToggle, usePending } from './parts';
 
 export function HomeScreen() {
   const { data, settings, categories, bank, households } = useApp();
@@ -139,13 +139,13 @@ export function HomeScreen() {
       <AccountsCard />
 
       <div className="section-head">
-        <h2>{budget.mode === 'category' ? 'Presupuesto por categoría' : 'Por categoría'}</h2>
+        <h2>{budget.mode === 'category' ? 'Categorías frente a presupuesto' : 'Por categoría'}</h2>
         <button className="link" onClick={() => ui.goTab('movements')}>Movimientos</button>
       </div>
       <div className="card">
         <KindToggle value={kind} onChange={setKind} />
         <div style={{ marginTop: 6 }}>
-          {budget.mode === 'category' ? <CompareList rows={comparison} kind={kind} /> : <ShareList txs={txs} kind={kind} />}
+          <CategoryTable rows={budget.mode === 'category' ? comparison : null} txs={txs} kind={kind} />
         </div>
       </div>
     </>
