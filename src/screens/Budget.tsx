@@ -23,7 +23,8 @@ export function BudgetScreen() {
   const [year, setYear] = useState(ui.period.y);
   const [editing, setEditing] = useState<{ kind: Kind | 'savings'; categoryId: string | null; propertyId?: string | null } | null>(null);
   const [splitting, setSplitting] = useState<{ kind: Kind; categoryId: string } | null>(null);
-  const [choosing, setChoosing] = useState(false);
+  // Target and categories do not add up when changing mode: the person decides which one to keep.
+  const [choosing, setChoosing] = useState<'category' | 'savings' | null>(null);
   // With several homes: 'all' = everything added up, null = General, or one home.
   const [pickedScope, setScope] = useState<Scope>('all');
   const homes = activeProperties.length > 0;
@@ -46,22 +47,31 @@ export function BudgetScreen() {
    * - to «Solo ahorro»: the target is calculated from the categories (if there is none yet);
    * - to «Por categorías» with a target: the person decides which one rules.
    */
+  const derivedAmounts = savingsFromCategories(data.budgetLines, year);
+  const derivedTotal = round2(derivedAmounts.reduce((a, v) => a + v, 0));
+  const targetTotal = savingsLine ? lineTotal(savingsLine) : 0;
+  const matches = !hasTarget || !hasCategories || Math.abs(derivedTotal - targetTotal) < 1;
+  /** Savings target taken from what the categories add up to. */
+  const targetFromCategories = () => {
+    const same = derivedAmounts.every((v) => v === derivedAmounts[0]);
+    upsert('budgetLines', [{ id: lineId(year, 'savings', null), year, kind: 'savings', categoryId: null, propertyId: null,
+      pattern: same ? 'monthly' : 'custom', base: same ? derivedAmounts[0] : 0, amounts: same ? buildAmounts('monthly', derivedAmounts[0]) : derivedAmounts }]);
+  };
+  /**
+   * Savings can always be derived from the categories, so moving between both modes is silent
+   * while they add up; only when target and categories differ the person chooses which one to keep.
+   */
   const changeMode = (m: BudgetMode) => {
     if (m === mode) return;
+    if (!matches) { setChoosing(m); return; }
     if (m === 'savings') {
-      if (!hasTarget && hasCategories) {
-        const amounts = savingsFromCategories(data.budgetLines, year);
-        const same = amounts.every((v) => v === amounts[0]);
-        upsert('budgetLines', [{ id: lineId(year, 'savings', null), year, kind: 'savings', categoryId: null, propertyId: null,
-          pattern: same ? 'monthly' : 'custom', base: same ? amounts[0] : 0, amounts: same ? buildAmounts('monthly', amounts[0]) : amounts }]);
-        toast(`Objetivo de ahorro calculado con tus categorías: ${eur(amounts.reduce((s, v) => s + v, 0))} al año. Puedes ajustarlo.`);
-      }
-      writeMode('savings');
-      return;
+      if (!hasTarget && hasCategories) targetFromCategories();
+    } else if (hasTarget && hasCategories) {
+      // Same amount as the categories: they rule (the target can be derived again at any time).
+      remove('budgetLines', [savingsLine!.id]);
     }
-    if (hasTarget) { setChoosing(true); return; }
-    writeMode('category');
-    if (!hasCategories) toast('Indica lo que prevés ingresar y gastar en cada categoría; el ahorro previsto saldrá de ahí.');
+    writeMode(m);
+    if (m === 'category' && !hasCategories) toast(hasTarget ? 'Reparte tu objetivo por categorías; verás lo que falta para cuadrar.' : 'Indica lo que prevés ingresar y gastar en cada categoría; el ahorro previsto saldrá de ahí.');
   };
   const categoriesRule = () => {
     if (!savingsLine) return;
@@ -190,19 +200,22 @@ export function BudgetScreen() {
       )}
       {editing && <BudgetLineSheet year={year} kind={editing.kind} categoryId={editing.categoryId} propertyId={editing.propertyId ?? null} onClose={() => setEditing(null)} />}
       {choosing && (
-        <Sheet title={`¿Qué manda en ${year}?`} onClose={() => setChoosing(false)}>
+        <Sheet title={`El objetivo y las categorías no cuadran`} onClose={() => setChoosing(null)}>
           <p className="muted small" style={{ marginTop: 0 }}>
-            Por categorías indicas lo que prevés ingresar y gastar en cada una, y de ahí sale el ahorro. Ahora tienes un objetivo de ahorro de {eur(savingsLine ? lineTotal(savingsLine) : 0)} al año.
+            En {year} tu objetivo de ahorro es {eur(targetTotal)} al año, pero tus categorías suman {eur(derivedTotal)} (ingresos − gastos). ¿Con cuál te quedas?
           </p>
-          <button className="choice" onClick={() => { categoriesRule(); writeMode('category'); setChoosing(false); }}>
-            <div className="t">Mandan las categorías</div>
-            <div className="d">El ahorro previsto será lo que sumen tus categorías (ingresos − gastos). El objetivo actual se quita.</div>
+          <button className="choice" onClick={() => {
+            if (choosing === 'category') categoriesRule(); else targetFromCategories();
+            writeMode(choosing); setChoosing(null);
+          }}>
+            <div className="t">Lo que suman las categorías · {eur(derivedTotal)}</div>
+            <div className="d">{choosing === 'category' ? 'El ahorro previsto será ingresos − gastos de tus categorías y se quita el objetivo.' : 'El objetivo de ahorro pasa a ser lo que suman tus categorías.'}</div>
           </button>
-          <button className="choice" onClick={() => { writeMode('category'); setChoosing(false); }}>
-            <div className="t">Manda el objetivo de ahorro</div>
-            <div className="d">Se mantiene el objetivo. Reparte ingresos y gastos por categoría y te indicaremos la diferencia hasta que cuadren.</div>
+          <button className="choice" onClick={() => { writeMode(choosing); setChoosing(null); }}>
+            <div className="t">Mi objetivo de ahorro · {eur(targetTotal)}</div>
+            <div className="d">{choosing === 'category' ? 'Se mantiene el objetivo; ajusta las categorías y te indicaremos la diferencia hasta que cuadren.' : 'Se mantiene tu objetivo; las categorías se guardan sin usarse.'}</div>
           </button>
-          <button className="btn block" style={{ marginTop: 12 }} onClick={() => setChoosing(false)}>Cancelar</button>
+          <button className="btn block" style={{ marginTop: 12 }} onClick={() => setChoosing(null)}>Cancelar</button>
         </Sheet>
       )}
       {splitting && !editing && (
