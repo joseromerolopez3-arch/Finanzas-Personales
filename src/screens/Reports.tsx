@@ -5,10 +5,10 @@ import { useLookups } from '../state/hooks';
 import { useUI } from '../state/ui';
 import { budgetFor, compareCategories, inScope, monthlySavingsBudget, type Scope } from '../domain/budget';
 import { inYear, netWorth, sumTotals, yearTotals } from '../domain/calc';
-import { makeDate, MONTHS_SHORT, todayStr } from '../lib/dates';
+import { makeDate, MONTHS_LONG, MONTHS_SHORT, todayStr } from '../lib/dates';
 import { eur } from '../lib/format';
 import { YearNav } from '../ui/controls';
-import { LineChart, MonthColumns } from '../ui/charts';
+import { LineChart } from '../ui/charts';
 import { CompareList, KindToggle, ScopeChips, ShareList, useKindToggle } from './parts';
 import { downloadCSV } from './backup';
 
@@ -38,6 +38,8 @@ export function ReportsScreen() {
     });
   }, [activeAccounts, data.transactions, year, lastMonth, today]);
   const monthsElapsed = Math.max(1, lastMonth + 1);
+  // Target of the months that already have movements, so the yearly deviation compares like with like.
+  const elapsedTarget = months.reduce((s, m, i) => s + (m.income || m.expense ? targets[i] : 0), 0);
 
   // Homes (cost centres): totals of the year per home and the category detail of the chosen one.
   const [pickedScope, setScope] = useState<Scope>('all');
@@ -50,11 +52,12 @@ export function ReportsScreen() {
     const list = [{ id: null as string | null, name: 'General', icon: '📋' }, ...properties.filter((p) => !p.archived || txsYear.some((t) => t.propertyId === p.id))];
     return list.map((h) => {
       const tx = txsYear.filter((t) => inScope(t, h.id));
-      const b = budgetFor(data.budgetYears, data.budgetLines, year, 0, 11, h.id);
+      // Same months as the actual figures (the whole year for a year that has not started yet).
+      const b = budgetFor(data.budgetYears, data.budgetLines, year, 0, lastMonth < 0 ? 11 : lastMonth, h.id);
       const sum = (k: string) => tx.filter((t) => t.type === k).reduce((s, t) => s + t.amount, 0);
       return { ...h, expense: sum('expense'), income: sum('income'), budget: b.mode === 'category' ? b.expense : null };
     });
-  }, [homes, properties, txsYear, data.budgetYears, data.budgetLines, year]);
+  }, [homes, properties, txsYear, data.budgetYears, data.budgetLines, year, lastMonth]);
 
   return (
     <>
@@ -78,50 +81,36 @@ export function ReportsScreen() {
         </div>
       </div>
 
-      <div className="section-head"><h2>Ahorro por mes</h2></div>
-      <div className="card">
-        <MonthColumns series={[{ label: 'Ahorro real', color: 'var(--series-1)', values: months.map((m) => m.savings) }]}
-          target={hasTargets ? targets : null} targetLabel="Objetivo" highlight={year === curY ? curM : undefined} />
-      </div>
-
-      <div className="section-head"><h2>Ingresos y gastos</h2></div>
-      <div className="card">
-        <MonthColumns series={[
-          { label: 'Ingresos', color: 'var(--series-income)', values: months.map((m) => m.income) },
-          { label: 'Gastos', color: 'var(--series-expense)', values: months.map((m) => m.expense) }
-        ]} highlight={year === curY ? curM : undefined} />
-      </div>
-
-      <div className="section-head"><h2>Mes a mes</h2></div>
+      <div className="section-head"><h2>Mes a mes</h2><span className="small muted">ahorro</span></div>
       <div className="card table-wrap" style={{ padding: '6px 10px' }}>
         <table className="table">
-          <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ahorro</th>{hasTargets && <th>Objetivo</th>}{hasTargets && <th>Dif.</th>}</tr></thead>
+          <thead><tr><th>Mes</th><th>Real</th><th>Objetivo</th><th>Desviación</th></tr></thead>
           <tbody>
             {months.map((m, i) => {
               const empty = !m.income && !m.expense;
+              const dev = !empty && targets[i] ? m.savings - targets[i] : null;
               return (
-                <tr key={i} className={empty ? 'dim' : ''}>
+                <tr key={i} className={empty && !targets[i] ? 'dim' : ''}>
                   <td>{MONTHS_SHORT[i]}</td>
-                  <td>{empty ? '—' : eur(m.income)}</td>
-                  <td>{empty ? '—' : eur(m.expense)}</td>
                   <td className={m.savings < 0 ? 'neg' : ''}>{empty ? '—' : eur(m.savings)}</td>
-                  {hasTargets && <td>{targets[i] ? eur(targets[i]) : '—'}</td>}
-                  {hasTargets && <td className={!empty && targets[i] ? (m.savings >= targets[i] ? 'pos' : 'neg') : ''}>{!empty && targets[i] ? eur(m.savings - targets[i]) : '—'}</td>}
+                  <td>{targets[i] ? eur(targets[i]) : '—'}</td>
+                  <td className={dev == null ? '' : dev >= 0 ? 'pos' : 'neg'}>{dev == null ? '—' : `${dev > 0 ? '+' : ''}${eur(dev)}`}</td>
                 </tr>
               );
             })}
             <tr className="total">
-              <td>Total</td><td>{eur(total.income)}</td><td>{eur(total.expense)}</td><td>{eur(total.savings)}</td>
-              {hasTargets && <td>{eur(budget.savings)}</td>}
-              {hasTargets && <td className={total.savings >= budget.savings ? 'pos' : 'neg'}>{eur(total.savings - budget.savings)}</td>}
+              <td>Total</td><td>{eur(total.savings)}</td>
+              <td>{hasTargets ? eur(elapsedTarget) : '—'}</td>
+              <td className={hasTargets ? (total.savings >= elapsedTarget ? 'pos' : 'neg') : ''}>{hasTargets ? `${total.savings - elapsedTarget > 0 ? '+' : ''}${eur(total.savings - elapsedTarget)}` : '—'}</td>
             </tr>
           </tbody>
         </table>
       </div>
+      {hasTargets && <p className="hint">Desviación = ahorro real − objetivo del mes; en positivo has ahorrado más de lo previsto. El total compara solo los meses con movimientos.</p>}
 
       {homes && (
         <>
-          <div className="section-head"><h2>Por vivienda</h2><span className="small muted">{year}</span></div>
+          <div className="section-head"><h2>Por vivienda</h2><span className="small muted">{lastMonth >= 0 && lastMonth < 11 ? `enero – ${MONTHS_LONG[lastMonth]}` : year}</span></div>
           <div className="card table-wrap" style={{ padding: '6px 10px' }}>
             <table className="table">
               <thead><tr><th>Vivienda</th><th>Gastos</th>{perHome.some((h) => h.budget != null) && <th>Presup.</th>}<th>Ingresos</th></tr></thead>
