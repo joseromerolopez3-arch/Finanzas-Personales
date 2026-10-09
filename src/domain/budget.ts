@@ -56,18 +56,23 @@ export interface BudgetFigures {
   /** Budget per category (category mode only). */
   byCategory: Map<string, number>;
   hasBudget: boolean;
+  /** Category mode: budgeted income − expenses (what the categories add up to). */
+  fromCategories: number;
+  /** A savings target rules: always in savings mode; in category mode when the year has one (the categories must add up to it). */
+  targetRules: boolean;
 }
 
 /** Budget for a range of months (inclusive, 0-based) of a year. The savings target is global (it ignores `scope`). */
 export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number, from: number, to: number, scope: Scope = 'all'): BudgetFigures {
   const mode = modeOf(years, year);
-  const out: BudgetFigures = { mode, income: 0, expense: 0, savings: 0, byCategory: new Map(), hasBudget: false };
+  const out: BudgetFigures = { mode, income: 0, expense: 0, savings: 0, byCategory: new Map(), hasBudget: false, fromCategories: 0, targetRules: false };
   if (!mode) return out;
   const ofYear = lines.filter((l) => l.year === year);
   if (mode === 'savings') {
     const l = ofYear.find((x) => x.kind === 'savings');
     out.savings = l ? lineTotal(l, from, to) : 0;
     out.hasBudget = !!l && l.amounts.some(Boolean);
+    out.targetRules = true;
     return out;
   }
   for (const l of ofYear) {
@@ -79,8 +84,23 @@ export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number
   }
   out.income = round2(out.income);
   out.expense = round2(out.expense);
-  out.savings = round2(out.income - out.expense);
+  out.fromCategories = round2(out.income - out.expense);
+  // With a savings target in category mode, the target rules (the categories should add up to it).
+  const target = scope === 'all' ? ofYear.find((x) => x.kind === 'savings' && x.amounts.some(Boolean)) : undefined;
+  out.targetRules = !!target;
+  out.savings = target ? lineTotal(target, from, to) : out.fromCategories;
+  if (target) out.hasBudget = true;
   return out;
+}
+
+/** Monthly savings the categories of a year add up to (budgeted income − expenses), for every home. */
+export function savingsFromCategories(lines: BudgetLine[], year: number): number[] {
+  const out = zeros();
+  for (const l of lines) {
+    if (l.year !== year || l.kind === 'savings' || !l.categoryId) continue;
+    l.amounts.forEach((v, i) => { out[i] += l.kind === 'income' ? v || 0 : -(v || 0); });
+  }
+  return out.map(round2);
 }
 
 /** Monthly budgeted savings for the 12 months of a year. */

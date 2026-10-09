@@ -64,7 +64,7 @@ export function HomeScreen() {
         {hasTarget ? (
           <>
             <div className="hero-note">
-              {budget.mode === 'category' ? 'Ahorro presupuestado' : 'Objetivo de ahorro'}: {eur(target)}
+              {budget.targetRules ? 'Objetivo de ahorro' : 'Ahorro presupuestado'}: {eur(target)}
               {target > 0 && ` · ${Math.round(Math.max(0, ratio) * 100)} %`}
             </div>
             <div style={{ marginTop: 10 }}><Progress value={Math.max(0, t.savings)} max={target} status={status} marker={isCurrent ? elapsed : undefined} /></div>

@@ -3,9 +3,9 @@ import { Plus, Wand2, Copy, Trash2, ChevronRight } from 'lucide-react';
 import type { BudgetLine, BudgetMode, Category, Kind } from '../domain/types';
 import { useApp } from '../state/app';
 import { useUI } from '../state/ui';
-import { budgetFor, inScope, lineId, lineTotal, proposeFromHistory, type Scope } from '../domain/budget';
+import { budgetFor, buildAmounts, inScope, lineId, lineTotal, proposeFromHistory, savingsFromCategories, type Scope } from '../domain/budget';
 import { inYear } from '../domain/calc';
-import { eur } from '../lib/format';
+import { eur, round2 } from '../lib/format';
 import { Empty, Segmented, YearNav } from '../ui/controls';
 import { BudgetLineSheet, describeLine } from './BudgetLineSheet';
 import { ScopeChips } from './parts';
@@ -23,6 +23,7 @@ export function BudgetScreen() {
   const [year, setYear] = useState(ui.period.y);
   const [editing, setEditing] = useState<{ kind: Kind | 'savings'; categoryId: string | null; propertyId?: string | null } | null>(null);
   const [splitting, setSplitting] = useState<{ kind: Kind; categoryId: string } | null>(null);
+  const [choosing, setChoosing] = useState(false);
   // With several homes: 'all' = everything added up, null = General, or one home.
   const [pickedScope, setScope] = useState<Scope>('all');
   const homes = activeProperties.length > 0;
@@ -38,15 +39,35 @@ export function BudgetScreen() {
   const yearBudget = budgetFor(data.budgetYears, data.budgetLines, year, 0, 11, scope);
 
   const writeMode = (m: BudgetMode) => upsert('budgetYears', [{ id: String(year), year, mode: m }]);
-  // Changing the way of budgeting a year that already has amounts is asked first (it is easy to tap by mistake).
+  const hasTarget = !!savingsLine && savingsLine.amounts.some(Boolean);
+  const hasCategories = lines.some((l) => l.kind !== 'savings' && l.amounts.some(Boolean));
+  /**
+   * From categories the savings can be derived, not the other way round:
+   * - to «Solo ahorro»: the target is calculated from the categories (if there is none yet);
+   * - to «Por categorías» with a target: the person decides which one rules.
+   */
   const changeMode = (m: BudgetMode) => {
     if (m === mode) return;
-    const has = m === 'savings' ? lines.some((l) => l.kind !== 'savings') : !!savingsLine;
-    const text = m === 'savings'
-      ? `¿Presupuestar ${year} solo con un objetivo de ahorro? Tus importes por categoría se guardan, pero dejarán de compararse hasta que vuelvas a «Por categorías».`
-      : `¿Presupuestar ${year} por categorías? El objetivo de ahorro se guarda, pero el ahorro previsto pasará a calcularse con las categorías.`;
-    if (has && !confirm(text)) return;
-    writeMode(m);
+    if (m === 'savings') {
+      if (!hasTarget && hasCategories) {
+        const amounts = savingsFromCategories(data.budgetLines, year);
+        const same = amounts.every((v) => v === amounts[0]);
+        upsert('budgetLines', [{ id: lineId(year, 'savings', null), year, kind: 'savings', categoryId: null, propertyId: null,
+          pattern: same ? 'monthly' : 'custom', base: same ? amounts[0] : 0, amounts: same ? buildAmounts('monthly', amounts[0]) : amounts }]);
+        toast(`Objetivo de ahorro calculado con tus categorías: ${eur(amounts.reduce((s, v) => s + v, 0))} al año. Puedes ajustarlo.`);
+      }
+      writeMode('savings');
+      return;
+    }
+    if (hasTarget) { setChoosing(true); return; }
+    writeMode('category');
+    if (!hasCategories) toast('Indica lo que prevés ingresar y gastar en cada categoría; el ahorro previsto saldrá de ahí.');
+  };
+  const categoriesRule = () => {
+    if (!savingsLine) return;
+    const removed = savingsLine;
+    remove('budgetLines', [removed.id]);
+    toast('El ahorro previsto sale ahora de tus categorías.', { label: 'Deshacer', run: () => upsert('budgetLines', [removed]) });
   };
 
   const editCategory = (kind: Kind, categoryId: string) => {
@@ -114,9 +135,17 @@ export function BudgetScreen() {
           {mode === 'category' && homes && <ScopeChips value={scope} onChange={setScope} />}
 
           <div className="hero" style={{ marginTop: 14 }}>
-            <div className="hero-label">{mode === 'savings' ? `Objetivo de ahorro ${year}` : scope === 'all' ? `Ahorro previsto en ${year}` : `Coste previsto · ${scopeName} ${year}`}</div>
+            <div className="hero-label">{yearBudget.targetRules ? `Objetivo de ahorro ${year}` : scope === 'all' ? `Ahorro previsto en ${year}` : `Coste previsto · ${scopeName} ${year}`}</div>
             <div className="hero-amount display num">{eur(net)}</div>
             <div className="hero-note">≈ {eur(net / 12)} al mes</div>
+            {mode === 'category' && yearBudget.targetRules && (() => {
+              const d = round2(yearBudget.fromCategories - yearBudget.savings);
+              return (
+                <div className="hero-note" style={{ marginTop: 6 }}>
+                  Tus categorías suman {eur(yearBudget.fromCategories)} · {Math.abs(d) < 1 ? 'cuadra ✓' : d < 0 ? `faltan ${eur(-d)} para cuadrar (sube ingresos o baja gastos)` : `sobran ${eur(d)} sobre el objetivo`}
+                </div>
+              );
+            })()}
             {mode === 'category' && (
               <div className="pills">
                 <div className="pill"><div className="l">Ingresos previstos</div><div className="v num">{eur(yearBudget.income)}</div></div>
@@ -124,6 +153,18 @@ export function BudgetScreen() {
               </div>
             )}
           </div>
+          {mode === 'category' && scope === 'all' && (
+            <div className="chips" style={{ marginTop: 10 }}>
+              {yearBudget.targetRules ? (
+                <>
+                  <button className="chip" onClick={() => setEditing({ kind: 'savings', categoryId: null })}>Editar objetivo de ahorro</button>
+                  <button className="chip" onClick={() => confirm('¿Quitar el objetivo de ahorro? El ahorro previsto pasará a ser lo que sumen tus categorías.') && categoriesRule()}>Que manden las categorías</button>
+                </>
+              ) : (
+                <button className="chip" onClick={() => setEditing({ kind: 'savings', categoryId: null })}>Fijar un objetivo de ahorro</button>
+              )}
+            </div>
+          )}
           <p className="hint">Toca una línea para cambiar su importe o su reparto por meses. Para comparar con lo real, ve a Informes.</p>
 
           {mode === 'category' ? (
@@ -148,6 +189,22 @@ export function BudgetScreen() {
         </>
       )}
       {editing && <BudgetLineSheet year={year} kind={editing.kind} categoryId={editing.categoryId} propertyId={editing.propertyId ?? null} onClose={() => setEditing(null)} />}
+      {choosing && (
+        <Sheet title={`¿Qué manda en ${year}?`} onClose={() => setChoosing(false)}>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Por categorías indicas lo que prevés ingresar y gastar en cada una, y de ahí sale el ahorro. Ahora tienes un objetivo de ahorro de {eur(savingsLine ? lineTotal(savingsLine) : 0)} al año.
+          </p>
+          <button className="choice" onClick={() => { categoriesRule(); writeMode('category'); setChoosing(false); }}>
+            <div className="t">Mandan las categorías</div>
+            <div className="d">El ahorro previsto será lo que sumen tus categorías (ingresos − gastos). El objetivo actual se quita.</div>
+          </button>
+          <button className="choice" onClick={() => { writeMode('category'); setChoosing(false); }}>
+            <div className="t">Manda el objetivo de ahorro</div>
+            <div className="d">Se mantiene el objetivo. Reparte ingresos y gastos por categoría y te indicaremos la diferencia hasta que cuadren.</div>
+          </button>
+          <button className="btn block" style={{ marginTop: 12 }} onClick={() => setChoosing(false)}>Cancelar</button>
+        </Sheet>
+      )}
       {splitting && !editing && (
         <SplitSheet year={year} kind={splitting.kind} categoryId={splitting.categoryId}
           onPick={(propertyId) => setEditing({ ...splitting, propertyId })} onClose={() => setSplitting(null)} />
