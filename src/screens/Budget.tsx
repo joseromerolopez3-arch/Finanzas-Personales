@@ -10,7 +10,7 @@ import { eur } from '../lib/format';
 import { Empty, MonthNav, Progress, Segmented, YearNav } from '../ui/controls';
 import { MonthColumns } from '../ui/charts';
 import { BudgetLineSheet, describeLine } from './BudgetLineSheet';
-import { KindToggle, ScopeChips, ShareList, useKindToggle } from './parts';
+import { budgetDiffText, KindToggle, ScopeChips, ShareList, useKindToggle } from './parts';
 import { useLookups } from '../state/hooks';
 import { Sheet } from '../ui/Sheet';
 
@@ -217,7 +217,7 @@ function CategoryBudgetList({ title, kind, comparison, lines, categories, period
               </div>
               <Progress value={actual} max={b} status={b ? status : 'none'} />
               <div className="bar-meta">
-                <span>{kind === 'expense' ? (b - actual >= 0 ? `Quedan ${eur(b - actual)}` : `Te has pasado ${eur(actual - b)}`) : (b - actual > 0 ? `Faltan ${eur(b - actual)}` : 'Conseguido')}</span>
+                <span>{budgetDiffText(kind, actual, b)}</span>
                 {own.some((l) => l.pattern === 'annual') && periodKind === 'month' && <span>Anual: mira «Año hasta hoy»</span>}
               </div>
             </button>
