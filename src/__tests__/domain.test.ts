@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAmount } from '../lib/format';
-import { buildAmounts, budgetFor, compareCategories, inScope, lineId, proposeFromHistory } from '../domain/budget';
+import { buildAmounts, budgetFor, compareCategories, inScope, lineId, proposeFromHistory, savingsFromCategories } from '../domain/budget';
 import { balanceOf, totals, yearTotals } from '../domain/calc';
 import { inheritFromRecurring, occurrences, pending } from '../domain/recurring';
 import { closingFromRows, reconcile } from '../domain/reconcile';
@@ -63,9 +63,20 @@ describe('budget', () => {
 
   it('derives savings from categories in category mode', () => {
     const years = [{ id: '2026', year: 2026, mode: 'category' as const }];
-    expect(budgetFor(years, lines, 2026, 0, 0).savings).toBe(1600);
-    expect(budgetFor(years, lines, 2026, 5, 5).savings).toBe(1000);
-    expect(budgetFor(years, lines, 2026, 0, 11).expense).toBe(400 * 12 + 600);
+    const cats = lines.filter((l) => l.kind !== 'savings');
+    expect(budgetFor(years, cats, 2026, 0, 0).savings).toBe(1600);
+    expect(budgetFor(years, cats, 2026, 5, 5).savings).toBe(1000);
+    expect(budgetFor(years, cats, 2026, 0, 11).expense).toBe(400 * 12 + 600);
+    expect(budgetFor(years, cats, 2026, 0, 0).targetRules).toBe(false);
+  });
+  it('in category mode a savings target rules and the categories are checked against it', () => {
+    const years = [{ id: '2026', year: 2026, mode: 'category' as const }];
+    const f = budgetFor(years, lines, 2026, 0, 0);
+    expect(f.targetRules).toBe(true);
+    expect(f.savings).toBe(300);
+    expect(f.fromCategories).toBe(1600);
+    expect(f.byCategory.get('super')).toBe(400);
+    expect(savingsFromCategories(lines, 2026).slice(4, 6)).toEqual([1600, 1000]);
   });
   it('uses only the savings line in savings mode', () => {
     const years = [{ id: '2026', year: 2026, mode: 'savings' as const }];
