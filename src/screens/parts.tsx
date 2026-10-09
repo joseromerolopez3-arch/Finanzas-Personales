@@ -200,7 +200,7 @@ export function ScopeChips({ value, onChange }: { value: Scope; onChange: (s: Sc
  * Category by category as a compact table, biggest first. With a budget by categories it adds
  * the budget and the difference (green = better than budgeted); otherwise only the amount.
  */
-export function CategoryTable({ rows, txs, kind }: { rows: CategoryComparison[] | null; txs: Transaction[]; kind: Kind }) {
+export function CategoryTable({ rows, txs, kind, onPick }: { rows: CategoryComparison[] | null; txs: Transaction[]; kind: Kind; onPick?: (categoryId: string) => void }) {
   const { cat } = useLookups();
   const list = rows
     ? [...rows].sort((a, b) => b.actual - a.actual || b.budget - a.budget)
@@ -220,8 +220,8 @@ export function CategoryTable({ rows, txs, kind }: { rows: CategoryComparison[] 
             const c = cat(r.categoryId);
             const d = diff(r.actual, r.budget);
             return (
-              <tr key={r.categoryId}>
-                <td style={{ textTransform: 'none', whiteSpace: 'normal' }}>{c.icon} {c.name}</td>
+              <tr key={r.categoryId} onClick={onPick && r.actual ? () => onPick(r.categoryId) : undefined} style={onPick && r.actual ? { cursor: 'pointer' } : undefined}>
+                <td style={{ textTransform: 'none', whiteSpace: 'normal' }}>{c.icon} {c.name}{onPick && r.actual ? <span className="faint"> ›</span> : null}</td>
                 <td>{eur(r.actual)}</td>
                 {rows && <td>{r.budget ? eur(r.budget) : '—'}</td>}
                 {rows && <td className={r.budget ? tone(d) : ''}>{r.budget ? signed(d) : '—'}</td>}
@@ -235,7 +235,10 @@ export function CategoryTable({ rows, txs, kind }: { rows: CategoryComparison[] 
           </tr>
         </tbody>
       </table>
-      {rows && <p className="hint">Dif. en verde: {kind === 'expense' ? 'has gastado menos de lo presupuestado' : 'has ingresado más de lo previsto'}; en rojo, al revés.</p>}
+      <p className="hint">
+        {rows ? `Dif. en verde: ${kind === 'expense' ? 'has gastado menos de lo presupuestado' : 'has ingresado más de lo previsto'}; en rojo, al revés. ` : ''}
+        {onPick ? 'Toca una categoría para ver sus movimientos.' : ''}
+      </p>
     </div>
   );
 }

@@ -68,13 +68,7 @@ export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number
   const out: BudgetFigures = { mode, income: 0, expense: 0, savings: 0, byCategory: new Map(), hasBudget: false, fromCategories: 0, targetRules: false };
   if (!mode) return out;
   const ofYear = lines.filter((l) => l.year === year);
-  if (mode === 'savings') {
-    const l = ofYear.find((x) => x.kind === 'savings');
-    out.savings = l ? lineTotal(l, from, to) : 0;
-    out.hasBudget = !!l && l.amounts.some(Boolean);
-    out.targetRules = true;
-    return out;
-  }
+  // Category amounts are always available for comparing, whatever mode the year is in.
   for (const l of ofYear) {
     if (l.kind === 'savings' || !l.categoryId || !inScope(l, scope)) continue;
     const v = lineTotal(l, from, to);
@@ -85,6 +79,14 @@ export function budgetFor(years: BudgetYear[], lines: BudgetLine[], year: number
   out.income = round2(out.income);
   out.expense = round2(out.expense);
   out.fromCategories = round2(out.income - out.expense);
+  if (mode === 'savings') {
+    // Only the savings target counts as the savings budget (it is global, whatever the scope).
+    const l = ofYear.find((x) => x.kind === 'savings');
+    out.savings = l ? lineTotal(l, from, to) : 0;
+    out.hasBudget = !!l && l.amounts.some(Boolean);
+    out.targetRules = true;
+    return out;
+  }
   // With a savings target in category mode, the target rules (the categories should add up to it).
   const target = scope === 'all' ? ofYear.find((x) => x.kind === 'savings' && x.amounts.some(Boolean)) : undefined;
   out.targetRules = !!target;

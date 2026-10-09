@@ -78,11 +78,13 @@ describe('budget', () => {
     expect(f.byCategory.get('super')).toBe(400);
     expect(savingsFromCategories(lines, 2026).slice(4, 6)).toEqual([1600, 1000]);
   });
-  it('uses only the savings line in savings mode', () => {
+  it('uses only the savings line for savings in savings mode, but keeps category amounts to compare', () => {
     const years = [{ id: '2026', year: 2026, mode: 'savings' as const }];
     const f = budgetFor(years, lines, 2026, 0, 2);
     expect(f.savings).toBe(900);
-    expect(f.byCategory.size).toBe(0);
+    expect(f.targetRules).toBe(true);
+    expect(f.byCategory.get('super')).toBe(1200);
+    expect(budgetFor(years, lines.filter((l) => l.kind === 'savings'), 2026, 0, 2).byCategory.size).toBe(0);
   });
   it('compares each category with its budget', () => {
     const years = [{ id: '2026', year: 2026, mode: 'category' as const }];

@@ -8,7 +8,8 @@ import { inMonthRange, sumTotals, yearTotals } from '../domain/calc';
 import { MONTHS_LONG, MONTHS_SHORT, todayStr } from '../lib/dates';
 import { eur } from '../lib/format';
 import { Segmented, YearNav } from '../ui/controls';
-import { CompareList, KindToggle, ScopeChips, ShareList, useKindToggle } from './parts';
+import { CategoryTable, KindToggle, ScopeChips, useKindToggle } from './parts';
+import { CategoryMovementsSheet } from './CategoryMovements';
 import { downloadCSV } from './backup';
 
 type PeriodMode = 'month' | 'range' | 'year';
@@ -63,10 +64,11 @@ export function ReportsScreen() {
       const tx = txs.filter((x) => inScope(x, h.id));
       const b = budgetFor(data.budgetYears, data.budgetLines, year, f, t, h.id);
       const sum = (k: string) => tx.filter((x) => x.type === k).reduce((s, x) => s + x.amount, 0);
-      return { ...h, expense: sum('expense'), income: sum('income'), budget: b.mode === 'category' ? b.expense : null };
+      return { ...h, expense: sum('expense'), income: sum('income'), budget: b.byCategory.size ? b.expense : null };
     });
   }, [homes, properties, txs, data.budgetYears, data.budgetLines, year, f, t]);
 
+  const [picked, setPicked] = useState<string | null>(null);
   const monthOptions = MONTHS_LONG.map((m, i) => <option key={m} value={i}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>);
 
   return (
@@ -164,10 +166,14 @@ export function ReportsScreen() {
       {homes && <div style={{ marginBottom: 10 }}><ScopeChips value={scope} onChange={setScope} /></div>}
       <div className="card">
         <KindToggle value={kind} onChange={setKind} />
-        {scopedBudget.mode === 'category'
-          ? <CompareList rows={compareCategories(scopedTxs, scopedBudget, categories, kind, elapsed)} kind={kind} />
-          : <ShareList txs={scopedTxs} kind={kind} months={Math.max(1, lived)} />}
+        <div style={{ marginTop: 6 }}>
+          <CategoryTable rows={scopedBudget.byCategory.size ? compareCategories(scopedTxs, scopedBudget, categories, kind, elapsed) : null} txs={scopedTxs} kind={kind} onPick={setPicked} />
+        </div>
       </div>
+      {picked !== null && (
+        <CategoryMovementsSheet categoryId={picked} kind={kind} txs={scopedTxs} onClose={() => setPicked(null)}
+          period={`${label}${scope === 'all' ? '' : ` · ${scope === null ? 'General' : activeProperties.find((p) => p.id === scope)?.name ?? ''}`}`} />
+      )}
     </>
   );
 }
