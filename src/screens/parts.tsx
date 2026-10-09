@@ -195,3 +195,47 @@ export function ScopeChips({ value, onChange }: { value: Scope; onChange: (s: Sc
     </div>
   );
 }
+
+/**
+ * Category by category as a compact table, biggest first. With a budget by categories it adds
+ * the budget and the difference (green = better than budgeted); otherwise only the amount.
+ */
+export function CategoryTable({ rows, txs, kind }: { rows: CategoryComparison[] | null; txs: Transaction[]; kind: Kind }) {
+  const { cat } = useLookups();
+  const list = rows
+    ? [...rows].sort((a, b) => b.actual - a.actual || b.budget - a.budget)
+    : [...byCategory(txs, kind).entries()].sort((a, b) => b[1] - a[1]).map(([categoryId, actual]) => ({ categoryId, actual, budget: 0 }));
+  if (!list.length) return <Empty>Sin {kind === 'income' ? 'ingresos' : 'gastos'} en este periodo.</Empty>;
+  // Expenses: below budget is good. Incomes: above what was expected is good.
+  const diff = (actual: number, budget: number) => round2(kind === 'expense' ? budget - actual : actual - budget);
+  const sum = (k: 'actual' | 'budget') => round2(list.reduce((s, r) => s + r[k], 0));
+  const signed = (d: number) => `${d > 0 ? '+' : ''}${eur(d)}`;
+  const tone = (d: number) => (Math.abs(d) < 0.005 ? '' : d > 0 ? 'pos' : 'neg');
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead><tr><th>Categoría</th><th>Real</th>{rows && <th>Presup.</th>}{rows && <th>Dif.</th>}</tr></thead>
+        <tbody>
+          {list.map((r) => {
+            const c = cat(r.categoryId);
+            const d = diff(r.actual, r.budget);
+            return (
+              <tr key={r.categoryId}>
+                <td style={{ textTransform: 'none', whiteSpace: 'normal' }}>{c.icon} {c.name}</td>
+                <td>{eur(r.actual)}</td>
+                {rows && <td>{r.budget ? eur(r.budget) : '—'}</td>}
+                {rows && <td className={r.budget ? tone(d) : ''}>{r.budget ? signed(d) : '—'}</td>}
+              </tr>
+            );
+          })}
+          <tr className="total">
+            <td>Total</td><td>{eur(sum('actual'))}</td>
+            {rows && <td>{eur(sum('budget'))}</td>}
+            {rows && <td className={tone(diff(sum('actual'), sum('budget')))}>{signed(diff(sum('actual'), sum('budget')))}</td>}
+          </tr>
+        </tbody>
+      </table>
+      {rows && <p className="hint">Dif. en verde: {kind === 'expense' ? 'has gastado menos de lo presupuestado' : 'has ingresado más de lo previsto'}; en rojo, al revés.</p>}
+    </div>
+  );
+}
